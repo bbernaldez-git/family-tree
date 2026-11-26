@@ -2,7 +2,7 @@
 // 1. CONFIGURATION
 // ==========================================
 const CONFIG = {
-  APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycby1Oiz3831LKZ8lxUfN2LKylCm9XusdQylGyRA1ozl_U4mM9Q7B2QpQUaiS4rYuSX5tTQ/exec",
+  APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycby9WeIeCRmZEUsTHVEkJN_5ySYz4FfEUbMtrxYbikY_fn6eqsf-ATfi8_3mz40bDD9pFA/exec",
   CLOUDINARY_CLOUD_NAME: "di1fg6nu",
   CLOUDINARY_UPLOAD_PRESET: "family_tree_unsigned",
   FAMILY_NAME: "Bernaldez Family Tree"
