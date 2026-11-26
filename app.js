@@ -11,13 +11,13 @@ const CONFIG = {
 const LINEAGE_BRANCHES = [
   "Crispin Bernaldez",
   "David Bernaldez",
-  "Wenny",
+  "Wenefreda",
   "Oscar Bernaldez",
-  "Joe",
-  "Josephine",
-  "Edwin",
-  "Maring",
-  "Vilma"
+  "Joe Bernaldez",
+  "Josephine Hermosura",
+  "Edwin Bernaldez",
+  "Maria Esta",
+  "Vilma Dela Cruz"
 ];
 
 const MIN_ZOOM = 0.25;
