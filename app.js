@@ -45,6 +45,20 @@ async function fetchMembers() {
 // ==========================================
 // 3. TREE RENDERING ENGINE (WITH BIRTH ORDER)
 // ==========================================
+function parseBirthDateValue(dateStr) {
+  if (!dateStr || !String(dateStr).trim()) return Number.POSITIVE_INFINITY;
+  const cleaned = String(dateStr).trim();
+  const parsed = Date.parse(cleaned);
+  return Number.isNaN(parsed) ? Number.POSITIVE_INFINITY : parsed;
+}
+
+function compareBirthDates(a, b) {
+  const timeA = parseBirthDateValue(a.BirthDate);
+  const timeB = parseBirthDateValue(b.BirthDate);
+  if (timeA !== timeB) return timeA - timeB;
+  return (a.BirthDate || "9999").localeCompare(b.BirthDate || "9999");
+}
+
 function renderTree() {
   const container = document.getElementById("tree-root");
   if (!allMembers.length) {
@@ -62,7 +76,7 @@ function buildBranchHTML(person, birthOrderInfo) {
   const parentIds = [person.MemberID, ...spouses.map(s => s.MemberID)];
   const children = allMembers
     .filter(m => m.Role === "Descendant" && parentIds.includes(m.RelatedToID))
-    .sort((a, b) => (a.BirthDate || "9999").localeCompare(b.BirthDate || "9999"));
+    .sort(compareBirthDates);
 
   let nodeHTML = `<div class="couple-group">`;
   nodeHTML += buildCardHTML(person, birthOrderInfo);
