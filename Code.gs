@@ -4,7 +4,7 @@ const SHEET_NAME = "Members";
 function doGet(e) {
   const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
   const data = sheet.getDataRange().getValues();
-  
+
   if (data.length <= 1) {
     return createJsonResponse({ status: "success", members: [] });
   }
@@ -15,15 +15,17 @@ function doGet(e) {
   for (let i = 1; i < data.length; i++) {
     const row = data[i];
     if (!row[0]) continue;
+
     let member = {};
     for (let j = 0; j < headers.length; j++) {
       let val = row[j];
-      if (val instanceof Date) {
+      if (val instanceof Date && !isNaN(val.getTime())) {
         val = Utilities.formatDate(val, Session.getScriptTimeZone(), "yyyy-MM-dd");
       }
       const key = headers[j] === "NickName" ? "Nickname" : headers[j];
-      member[key] = val !== undefined && val !== null ? String(val) : "";
+      member[key] = val !== undefined && val !== null ? String(val).trim() : "";
     }
+
     if (!member.FullName && member.Nickname) {
       member.FullName = member.Nickname;
     }
@@ -52,17 +54,17 @@ function doPost(e) {
             payload.MemberID,
             payload.Role || data[i][1],
             payload.RelatedToID !== undefined ? payload.RelatedToID : data[i][2],
-            payload.FullName || "",
-            payload.Nickname || "",
-            payload.Gender || "",
-            payload.BirthDate || "",
+            payload.FullName !== undefined ? payload.FullName : data[i][3],
+            payload.Nickname !== undefined ? payload.Nickname : data[i][4],
+            payload.Gender !== undefined ? payload.Gender : data[i][5],
+            payload.BirthDate !== undefined ? payload.BirthDate : data[i][6],
             payload.PhotoURL || existingPhoto || "",
-            payload.Occupation || "",
-            payload.Hobbies || "",
-            payload.Sports || "",
-            payload.Phone || "",
-            payload.Email || "",
-            payload.City || "",
+            payload.Occupation !== undefined ? payload.Occupation : data[i][8],
+            payload.Hobbies !== undefined ? payload.Hobbies : data[i][9],
+            payload.Sports !== undefined ? payload.Sports : data[i][10],
+            payload.Phone !== undefined ? payload.Phone : data[i][11],
+            payload.Email !== undefined ? payload.Email : data[i][12],
+            payload.City !== undefined ? payload.City : data[i][13],
             JSON.stringify(payload.Socials || {})
           ];
           sheet.getRange(rowNum, 1, 1, 15).setValues([updatedRow]);
