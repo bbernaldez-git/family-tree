@@ -2,16 +2,29 @@
 // 1. CONFIGURATION
 // ==========================================
 const CONFIG = {
-  APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbxxG6MgpO12wXYM_C5eTlngxcDyDBWfPdZvrUOKyETi0_qU74Y4gYoaIxUlo6TsFPFAag/exec",
+  APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycby1Oiz3831LKZ8lxUfN2LKylCm9XusdQylGyRA1ozl_U4mM9Q7B2QpQUaiS4rYuSX5tTQ/exec",
   CLOUDINARY_CLOUD_NAME: "di1fg6nu",
   CLOUDINARY_UPLOAD_PRESET: "family_tree_unsigned",
   FAMILY_NAME: "Bernaldez Family Tree"
 };
 
+const LINEAGE_BRANCHES = [
+  "Crispin Bernaldez",
+  "David Bernaldez",
+  "Wenny",
+  "Oscar Bernaldez",
+  "Joe",
+  "Josephine",
+  "Edwin",
+  "Maring",
+  "Vilma"
+];
+
 let allMembers = [];
 let selectedRole = "Descendant";
 let currentZoom = 1;
 let viewerId = localStorage.getItem("family_tree_me_id") || "";
+let viewerBranch = localStorage.getItem("family_tree_branch") || "";
 
 // ==========================================
 // 2. INITIALIZATION & DATA FETCHING
@@ -22,7 +35,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   const params = new URLSearchParams(window.location.search);
   if (params.get("action") === "join") {
-    openJoinForm();
+    openJoinForm(true);
   }
 });
 
@@ -31,6 +44,13 @@ async function fetchMembers() {
     const res = await fetch(CONFIG.APPS_SCRIPT_URL);
     const data = await res.json();
     allMembers = data.members || [];
+    if (viewerId && !viewerBranch) {
+      const me = allMembers.find(x => x.MemberID === viewerId);
+      if (me) {
+        viewerBranch = resolveMemberBranch(me);
+        if (viewerBranch) localStorage.setItem("family_tree_branch", viewerBranch);
+      }
+    }
     renderTree();
     populateFormHelpers();
     generateDidYouKnow();
@@ -74,6 +94,43 @@ function toDateInputValue(dateVal) {
   const month = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function resolveMemberBranch(member) {
+  if (!member) return "";
+  if (member.LineageBranch && member.LineageBranch.trim()) {
+    return member.LineageBranch.trim();
+  }
+
+  let current = member;
+  const visited = new Set();
+  while (current && !visited.has(current.MemberID)) {
+    visited.add(current.MemberID);
+    const matched = LINEAGE_BRANCHES.find(b => {
+      const first = b.split(" ")[0].toLowerCase();
+      return (
+        (current.FullName || "").toLowerCase().includes(first) ||
+        (current.Nickname || "").toLowerCase().includes(first)
+      );
+    });
+    if (matched) return matched;
+    current = allMembers.find(x => x.MemberID === current.RelatedToID);
+  }
+  return "";
+}
+
+function getActiveEditorBranch() {
+  if (viewerBranch && viewerBranch.trim()) return viewerBranch.trim();
+  const me = allMembers.find(x => x.MemberID === viewerId);
+  return me ? resolveMemberBranch(me) : "";
+}
+
+function canEditMember(targetMember) {
+  if (!targetMember) return false;
+  const activeBranch = getActiveEditorBranch().toLowerCase();
+  const targetBranch = resolveMemberBranch(targetMember).toLowerCase();
+  if (!activeBranch || !targetBranch) return true;
+  return activeBranch === targetBranch;
 }
 
 function renderTree() {
@@ -264,6 +321,8 @@ function openProfile(memberId) {
   const hobbies = (m.Hobbies || "").split(",").map(s => s.trim()).filter(Boolean);
   const sports = (m.Sports || "").split(",").map(s => s.trim()).filter(Boolean);
   const isMe = m.MemberID === viewerId;
+  const editable = canEditMember(m);
+  const memberBranch = resolveMemberBranch(m);
 
   let html = `
     <button class="close-drawer" onclick="document.getElementById('profile-overlay').style.display='none'">×</button>
@@ -276,6 +335,7 @@ function openProfile(memberId) {
           ${m.Occupation || ''}
           ${m.BirthDate ? `<br/>🎂 ${m.BirthDate}` : ''}
           ${m.City ? `<br/>📍 ${m.City}` : ''}
+          ${memberBranch ? `<br/>🌿 Line: ${memberBranch}` : ''}
         </div>
       </div>
     </div>
@@ -283,7 +343,10 @@ function openProfile(memberId) {
     <div class="action-row">
       ${m.Phone ? `<a href="tel:${m.Phone}" class="action-pill">📞 Call</a><a href="sms:${m.Phone}" class="action-pill">💬 SMS</a>` : ''}
       ${m.Email ? `<a href="mailto:${m.Email}" class="action-pill">✉️ Email</a>` : ''}
-      <button class="action-pill" onclick="openEditForm('${m.MemberID}')">✏️ Edit Profile</button>
+      ${editable
+        ? `<button class="action-pill" onclick="openEditForm('${m.MemberID}')">✏️ Edit Profile</button>`
+        : `<span class="action-pill" style="opacity:0.65; cursor:not-allowed;">🔒 ${memberBranch || 'Other'} Line Only</span>`
+      }
       <button class="action-pill" style="background:${isMe ? 'var(--accent-bg)' : 'var(--primary-light)'}; color:var(--primary);" onclick="setAsMe('${m.MemberID}')">
         ${isMe ? '★ Viewing as You' : '👤 This is me'}
       </button>
@@ -316,6 +379,11 @@ function openProfile(memberId) {
 function setAsMe(memberId) {
   viewerId = memberId;
   localStorage.setItem("family_tree_me_id", memberId);
+  const picked = allMembers.find(x => x.MemberID === memberId);
+  if (picked) {
+    viewerBranch = resolveMemberBranch(picked);
+    localStorage.setItem("family_tree_branch", viewerBranch);
+  }
   renderTree();
   generateDidYouKnow();
   openProfile(memberId);
@@ -324,17 +392,61 @@ function setAsMe(memberId) {
 // ==========================================
 // 6. ADD & EDIT FORM + CLOUDINARY UPLOAD
 // ==========================================
-function openJoinForm() {
+function populateLineageBranchSelect(selectedValue = "") {
+  const select = document.getElementById("LineageBranch");
+  if (!select) return;
+  select.innerHTML =
+    `<option value="">-- Select whose descendant you are --</option>` +
+    LINEAGE_BRANCHES.map(name => `<option value="${name}">${name}</option>`).join("");
+  if (selectedValue) {
+    select.value = selectedValue;
+  }
+}
+
+function onLineageBranchChange() {
+  const branchEl = document.getElementById("LineageBranch");
+  if (!branchEl || !branchEl.value) return;
+
+  const firstWord = branchEl.value.split(" ")[0].toLowerCase();
+  const matchedMember = allMembers.find(m =>
+    m.FullName.toLowerCase() === branchEl.value.toLowerCase() ||
+    m.FullName.toLowerCase().includes(firstWord) ||
+    (m.Nickname || "").toLowerCase().includes(firstWord)
+  );
+
+  if (matchedMember) {
+    const relSelect = document.getElementById("RelatedToID");
+    if (!Array.from(relSelect.options).some(opt => opt.value === matchedMember.MemberID)) {
+      const opt = document.createElement("option");
+      opt.value = matchedMember.MemberID;
+      opt.textContent = `${matchedMember.FullName}${matchedMember.Nickname ? ` (${matchedMember.Nickname})` : ""}`;
+      relSelect.prepend(opt);
+    }
+    relSelect.value = matchedMember.MemberID;
+  }
+}
+
+function openJoinForm(fromQr = false) {
   document.getElementById("join-form").reset();
   document.getElementById("EditMemberID").value = "";
-  document.getElementById("form-heading").textContent = "Join the Family Tree";
-  document.getElementById("form-sub").textContent = "Add yourself so relatives can connect with you.";
+  document.getElementById("form-heading").textContent = fromQr
+    ? "Whose Descendant Are You?"
+    : "Join the Family Tree";
+  document.getElementById("form-sub").textContent = fromQr
+    ? "Select which child of Monica and Lolo your line comes from."
+    : "Add yourself so relatives can connect with you.";
   document.getElementById("photo-label").textContent = "Profile Photo";
   document.getElementById("submit-btn").textContent = "✓ Save to Family Tree";
   document.getElementById("role-toggle-wrap").style.display = "grid";
   document.getElementById("relation-group").style.display = "block";
   document.getElementById("RelatedToID").required = true;
 
+  const passkeyGroup = document.getElementById("passkey-group");
+  const passkeyInput = document.getElementById("FamilyPasscode");
+  if (passkeyGroup) passkeyGroup.style.display = "block";
+  if (passkeyInput) passkeyInput.required = true;
+
+  populateLineageBranchSelect(getActiveEditorBranch());
   setRole("Descendant");
   filterRelativeDropdown("");
   document.getElementById("form-overlay").style.display = "flex";
@@ -344,6 +456,11 @@ function openEditForm(memberId) {
   const m = allMembers.find(x => x.MemberID === memberId);
   if (!m) return;
 
+  if (!canEditMember(m)) {
+    alert(`You can only update members from your own line branch (${getActiveEditorBranch() || "your branch"}).`);
+    return;
+  }
+
   document.getElementById("profile-overlay").style.display = "none";
   document.getElementById("join-form").reset();
 
@@ -352,6 +469,13 @@ function openEditForm(memberId) {
   document.getElementById("form-sub").textContent = "Update your details, birthdate, or profile photo.";
   document.getElementById("photo-label").textContent = "Change Photo (Optional)";
   document.getElementById("submit-btn").textContent = "✓ Save Changes";
+
+  const passkeyGroup = document.getElementById("passkey-group");
+  const passkeyInput = document.getElementById("FamilyPasscode");
+  if (passkeyGroup) passkeyGroup.style.display = "none";
+  if (passkeyInput) passkeyInput.required = false;
+
+  populateLineageBranchSelect(resolveMemberBranch(m));
 
   if (m.Role === "Root") {
     document.getElementById("role-toggle-wrap").style.display = "none";
@@ -465,6 +589,10 @@ async function submitMember(e) {
 
   try {
     const existingMember = isEdit ? allMembers.find(x => x.MemberID === editId) : null;
+    if (isEdit && existingMember && !canEditMember(existingMember)) {
+      throw new Error(`You can only update members from your own line branch (${getActiveEditorBranch() || "your branch"}).`);
+    }
+
     const fileInput = document.getElementById("PhotoFile");
     const hasNewFile = Boolean(fileInput.files && fileInput.files[0]);
 
@@ -474,6 +602,15 @@ async function submitMember(e) {
 
     const birthDateInput = document.getElementById("BirthDate").value.trim();
     const birthDateVal = birthDateInput || (existingMember ? existingMember.BirthDate : "");
+
+    const selectedBranch = document.getElementById("LineageBranch")
+      ? document.getElementById("LineageBranch").value.trim()
+      : "";
+    const resolvedBranch = selectedBranch || (existingMember ? resolveMemberBranch(existingMember) : "");
+
+    const familyPasscode = document.getElementById("FamilyPasscode")
+      ? document.getElementById("FamilyPasscode").value.trim()
+      : "";
 
     const payload = {
       action: isEdit ? "update" : "create",
@@ -494,7 +631,10 @@ async function submitMember(e) {
       Socials: {
         fb: document.getElementById("SocialFB").value.trim(),
         ig: document.getElementById("SocialIG").value.trim()
-      }
+      },
+      LineageBranch: resolvedBranch,
+      EditorLineageBranch: getActiveEditorBranch(),
+      FamilyPasscode: familyPasscode
     };
 
     const res = await fetch(CONFIG.APPS_SCRIPT_URL, {
@@ -507,6 +647,10 @@ async function submitMember(e) {
       if (!isEdit) {
         viewerId = result.memberId;
         localStorage.setItem("family_tree_me_id", viewerId);
+        if (resolvedBranch) {
+          viewerBranch = resolvedBranch;
+          localStorage.setItem("family_tree_branch", viewerBranch);
+        }
       }
       document.getElementById("join-form").reset();
       document.getElementById("form-overlay").style.display = "none";
