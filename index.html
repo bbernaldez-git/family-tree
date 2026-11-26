@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes" />
   <title>Bernaldez Family Tree &amp; Directory</title>
   <link rel="stylesheet" href="style.css" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -46,8 +46,9 @@
   </main>
 
   <div class="zoom-controls">
-    <button type="button" onclick="adjustZoom(0.15)" title="Zoom in">+</button>
-    <button type="button" onclick="adjustZoom(-0.15)" title="Zoom out">−</button>
+    <button type="button" onclick="adjustZoom(0.2)" title="Zoom in">+</button>
+    <button type="button" onclick="resetZoom()" title="Reset zoom">1:1</button>
+    <button type="button" onclick="adjustZoom(-0.2)" title="Zoom out">−</button>
   </div>
 
   <!-- PROFILE DRAWER -->
