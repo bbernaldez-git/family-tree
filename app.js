@@ -2,7 +2,7 @@
 // 1. CONFIGURATION
 // ==========================================
 const CONFIG = {
-  APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbzzjnGfl0RnXyax8oQdWbROQDVTfLP5ArxnKhayaYVjgN0o4j83E1BwKu-gwVQ-zeU4cg/exec",
+  APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbxxG6MgpO12wXYM_C5eTlngxcDyDBWfPdZvrUOKyETi0_qU74Y4gYoaIxUlo6TsFPFAag/exec",
   CLOUDINARY_CLOUD_NAME: "di1fg6nu",
   CLOUDINARY_UPLOAD_PRESET: "family_tree_unsigned",
   FAMILY_NAME: "Bernaldez Family Tree"
@@ -57,6 +57,23 @@ function compareBirthDates(a, b) {
   const timeB = parseBirthDateValue(b.BirthDate);
   if (timeA !== timeB) return timeA - timeB;
   return (a.BirthDate || "9999").localeCompare(b.BirthDate || "9999");
+}
+
+function toDateInputValue(dateVal) {
+  if (!dateVal) return "";
+  const str = String(dateVal).trim();
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    return str;
+  }
+
+  const d = new Date(str);
+  if (Number.isNaN(d.getTime())) return "";
+
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function renderTree() {
@@ -352,7 +369,7 @@ function openEditForm(memberId) {
   document.getElementById("FullName").value = m.FullName || "";
   document.getElementById("Nickname").value = m.Nickname || "";
   document.getElementById("Gender").value = m.Gender || "Male";
-  document.getElementById("BirthDate").value = m.BirthDate || "";
+  document.getElementById("BirthDate").value = toDateInputValue(m.BirthDate);
   document.getElementById("Occupation").value = m.Occupation || "";
   document.getElementById("Hobbies").value = m.Hobbies || "";
   document.getElementById("Sports").value = m.Sports || "";
@@ -431,7 +448,10 @@ async function uploadToCloudinary(file) {
     body: formData
   });
   const data = await res.json();
-  return data.secure_url || "";
+  if (!res.ok || !data.secure_url) {
+    throw new Error(data.error?.message || "Cloudinary upload failed");
+  }
+  return data.secure_url;
 }
 
 async function submitMember(e) {
@@ -444,9 +464,16 @@ async function submitMember(e) {
   btn.textContent = isEdit ? "Updating..." : "Saving...";
 
   try {
-    const fileInput = document.getElementById("PhotoFile");
-    const photoUrl = fileInput.files && fileInput.files[0] ? await uploadToCloudinary(fileInput.files[0]) : "";
     const existingMember = isEdit ? allMembers.find(x => x.MemberID === editId) : null;
+    const fileInput = document.getElementById("PhotoFile");
+    const hasNewFile = Boolean(fileInput.files && fileInput.files[0]);
+
+    const photoUrl = hasNewFile
+      ? await uploadToCloudinary(fileInput.files[0])
+      : (existingMember ? existingMember.PhotoURL : "");
+
+    const birthDateInput = document.getElementById("BirthDate").value.trim();
+    const birthDateVal = birthDateInput || (existingMember ? existingMember.BirthDate : "");
 
     const payload = {
       action: isEdit ? "update" : "create",
@@ -456,7 +483,7 @@ async function submitMember(e) {
       FullName: document.getElementById("FullName").value.trim(),
       Nickname: document.getElementById("Nickname").value.trim(),
       Gender: document.getElementById("Gender").value,
-      BirthDate: document.getElementById("BirthDate").value,
+      BirthDate: birthDateVal,
       PhotoURL: photoUrl,
       Occupation: document.getElementById("Occupation").value.trim(),
       Hobbies: document.getElementById("Hobbies").value.trim(),
@@ -490,7 +517,7 @@ async function submitMember(e) {
     }
   } catch (err) {
     console.error(err);
-    alert("Submission failed. Please try again.");
+    alert("Submission failed: " + (err.message || "Please try again."));
   } finally {
     btn.disabled = false;
     btn.textContent = isEdit ? "✓ Save Changes" : "✓ Save to Family Tree";
