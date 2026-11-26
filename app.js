@@ -2,7 +2,7 @@
 // 1. CONFIGURATION
 // ==========================================
 const CONFIG = {
-  APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycby9WeIeCRmZEUsTHVEkJN_5ySYz4FfEUbMtrxYbikY_fn6eqsf-ATfi8_3mz40bDD9pFA/exec",
+  APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbzzjnGfl0RnXyax8oQdWbROQDVTfLP5ArxnKhayaYVjgN0o4j83E1BwKu-gwVQ-zeU4cg/exec",
   CLOUDINARY_CLOUD_NAME: "di1fg6nu",
   CLOUDINARY_UPLOAD_PRESET: "family_tree_unsigned",
   FAMILY_NAME: "Bernaldez Family Tree"
@@ -20,9 +20,13 @@ const LINEAGE_BRANCHES = [
   "Vilma"
 ];
 
+const MIN_ZOOM = 0.25;
+const MAX_ZOOM = 2.2;
+
 let allMembers = [];
 let selectedRole = "Descendant";
 let currentZoom = 1;
+let hasUserAdjustedZoom = false;
 let viewerId = localStorage.getItem("family_tree_me_id") || "";
 let viewerBranch = localStorage.getItem("family_tree_branch") || "";
 
@@ -143,6 +147,7 @@ function renderTree() {
   const roots = allMembers.filter(m => m.Role === "Root" || !m.RelatedToID);
   const html = `<ul>${roots.map(root => buildBranchHTML(root, null)).join("")}</ul>`;
   container.innerHTML = html;
+  requestAnimationFrame(autoFitTreeToViewport);
 }
 
 function buildBranchHTML(person, birthOrderInfo) {
@@ -669,7 +674,7 @@ async function submitMember(e) {
 }
 
 // ==========================================
-// 7. SEARCH, ZOOM & QR MODAL
+// 7. SEARCH, MOBILE ZOOM & QR MODAL
 // ==========================================
 function handleSearch(query) {
   const box = document.getElementById("search-results");
@@ -696,10 +701,114 @@ function selectSearch(id) {
   focusMember(id);
 }
 
-function adjustZoom(delta) {
-  currentZoom = Math.min(Math.max(0.45, currentZoom + delta), 1.6);
-  document.getElementById("tree-canvas").style.transform = `scale(${currentZoom})`;
+function syncScaledBounds() {
+  const viewport = document.querySelector(".tree-viewport");
+  const canvas = document.getElementById("tree-canvas");
+  if (!viewport || !canvas) return;
+
+  const prevTransform = canvas.style.transform;
+  canvas.style.transform = "none";
+  const naturalWidth = canvas.offsetWidth;
+  const naturalHeight = canvas.offsetHeight;
+  canvas.style.transform = prevTransform;
+
+  const scaledWidth = naturalWidth * currentZoom;
+  const scaledHeight = naturalHeight * currentZoom;
+
+  const horizontalOffset = Math.min(0, (scaledWidth - naturalWidth) / 2);
+  const verticalOffset = Math.min(0, scaledHeight - naturalHeight);
+
+  canvas.style.marginLeft = `${horizontalOffset}px`;
+  canvas.style.marginRight = `${horizontalOffset}px`;
+  canvas.style.marginBottom = `${verticalOffset}px`;
 }
+
+function applyZoom(nextZoom, fromUser = true) {
+  if (fromUser) hasUserAdjustedZoom = true;
+  currentZoom = Math.min(Math.max(MIN_ZOOM, Number(nextZoom.toFixed(2))), MAX_ZOOM);
+  const canvas = document.getElementById("tree-canvas");
+  if (canvas) {
+    canvas.style.transform = `scale(${currentZoom})`;
+    syncScaledBounds();
+  }
+}
+
+function adjustZoom(delta) {
+  applyZoom(currentZoom + delta, true);
+}
+
+function resetZoom() {
+  hasUserAdjustedZoom = false;
+  applyZoom(1, false);
+}
+
+function autoFitTreeToViewport() {
+  if (hasUserAdjustedZoom) return;
+  const viewport = document.querySelector(".tree-viewport");
+  const canvas = document.getElementById("tree-canvas");
+  if (!viewport || !canvas) return;
+
+  if (window.innerWidth > 768) {
+    applyZoom(1, false);
+    return;
+  }
+
+  canvas.style.transform = "none";
+  canvas.style.marginLeft = "0px";
+  canvas.style.marginRight = "0px";
+  canvas.style.marginBottom = "0px";
+
+  const availableWidth = viewport.clientWidth - 24;
+  const treeWidth = canvas.scrollWidth || canvas.offsetWidth;
+
+  if (treeWidth > 0 && availableWidth > 0 && treeWidth > availableWidth) {
+    const fitScale = Math.max(MIN_ZOOM, Math.min(1, availableWidth / treeWidth));
+    applyZoom(fitScale, false);
+  } else {
+    applyZoom(1, false);
+  }
+}
+
+(function enablePinchZoom() {
+  let pinchStartDist = 0;
+  let pinchStartZoom = 1;
+
+  document.addEventListener("DOMContentLoaded", () => {
+    const viewport = document.querySelector(".tree-viewport");
+    if (!viewport) return;
+
+    const getDistance = (t1, t2) =>
+      Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+
+    viewport.addEventListener("touchstart", (e) => {
+      if (e.touches.length === 2) {
+        pinchStartDist = getDistance(e.touches[0], e.touches[1]);
+        pinchStartZoom = currentZoom;
+      }
+    }, { passive: true });
+
+    viewport.addEventListener("touchmove", (e) => {
+      if (e.touches.length === 2 && pinchStartDist > 0) {
+        const currentDist = getDistance(e.touches[0], e.touches[1]);
+        applyZoom(pinchStartZoom * (currentDist / pinchStartDist), true);
+      }
+    }, { passive: true });
+
+    viewport.addEventListener("touchend", (e) => {
+      if (e.touches.length < 2) {
+        pinchStartDist = 0;
+      }
+    }, { passive: true });
+
+    window.addEventListener("resize", () => {
+      if (!hasUserAdjustedZoom) {
+        autoFitTreeToViewport();
+      } else {
+        syncScaledBounds();
+      }
+    });
+  });
+})();
 
 function openQrModal() {
   const qrBox = document.getElementById("qrcode-box");
