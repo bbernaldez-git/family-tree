@@ -2,7 +2,7 @@
 // 1. CONFIGURATION
 // ==========================================
 const CONFIG = {
-  APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbzzjnGfl0RnXyax8oQdWbROQDVTfLP5ArxnKhayaYVjgN0o4j83E1BwKu-gwVQ-zeU4cg/exec",
+  APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycby0uZ2ZJ1nJAB1-m8raCxEkQiSwqvdKzq0AwWrHJIBkE3Jvl4j0z_NwjjN3sGPjLO-P5g/exec",
   CLOUDINARY_CLOUD_NAME: "di1fg6nu",
   CLOUDINARY_UPLOAD_PRESET: "family_tree_unsigned",
   FAMILY_NAME: "Bernaldez Family Tree"
@@ -29,6 +29,7 @@ let currentZoom = 1;
 let hasUserAdjustedZoom = false;
 let viewerId = localStorage.getItem("family_tree_me_id") || "";
 let viewerBranch = localStorage.getItem("family_tree_branch") || "";
+let adminPasscodeSession = sessionStorage.getItem("family_tree_admin_code") || "";
 
 // ==========================================
 // 2. INITIALIZATION & DATA FETCHING
@@ -129,12 +130,28 @@ function getActiveEditorBranch() {
   return me ? resolveMemberBranch(me) : "";
 }
 
+function getManagedIds(member) {
+  if (!member) return [];
+  if (Array.isArray(member.ManagedByList)) {
+    return member.ManagedByList.map(id => String(id).trim()).filter(Boolean);
+  }
+  return String(member.ManagedBy || "")
+    .split(",")
+    .map(id => id.trim())
+    .filter(Boolean);
+}
+
+function isProfileSteward(targetMember) {
+  if (!targetMember || !viewerId) return false;
+  return getManagedIds(targetMember).includes(viewerId);
+}
+
 function canEditMember(targetMember) {
   if (!targetMember) return false;
-  const activeBranch = getActiveEditorBranch().toLowerCase();
-  const targetBranch = resolveMemberBranch(targetMember).toLowerCase();
-  if (!activeBranch || !targetBranch) return true;
-  return activeBranch === targetBranch;
+  if (adminPasscodeSession) return true;
+  if (!viewerId) return false;
+  if (targetMember.MemberID === viewerId) return true;
+  return isProfileSteward(targetMember);
 }
 
 function renderTree() {
@@ -328,6 +345,10 @@ function openProfile(memberId) {
   const isMe = m.MemberID === viewerId;
   const editable = canEditMember(m);
   const memberBranch = resolveMemberBranch(m);
+  const stewardNames = getManagedIds(m)
+    .map(id => allMembers.find(x => x.MemberID === id))
+    .filter(Boolean)
+    .map(x => x.Nickname || x.FullName);
 
   let html = `
     <button class="close-drawer" onclick="document.getElementById('profile-overlay').style.display='none'">×</button>
@@ -341,6 +362,7 @@ function openProfile(memberId) {
           ${m.BirthDate ? `<br/>🎂 ${m.BirthDate}` : ''}
           ${m.City ? `<br/>📍 ${m.City}` : ''}
           ${memberBranch ? `<br/>🌿 Line: ${memberBranch}` : ''}
+          ${stewardNames.length ? `<br/>🛡️ Managed by: ${stewardNames.join(", ")}` : ''}
         </div>
       </div>
     </div>
@@ -350,7 +372,7 @@ function openProfile(memberId) {
       ${m.Email ? `<a href="mailto:${m.Email}" class="action-pill">✉️ Email</a>` : ''}
       ${editable
         ? `<button class="action-pill" onclick="openEditForm('${m.MemberID}')">✏️ Edit Profile</button>`
-        : `<span class="action-pill" style="opacity:0.65; cursor:not-allowed;">🔒 ${memberBranch || 'Other'} Line Only</span>`
+        : `<span class="action-pill" style="opacity:0.65; cursor:not-allowed;">🔒 Owned by ${m.Nickname || m.FullName}</span>`
       }
       <button class="action-pill" style="background:${isMe ? 'var(--accent-bg)' : 'var(--primary-light)'}; color:var(--primary);" onclick="setAsMe('${m.MemberID}')">
         ${isMe ? '★ Viewing as You' : '👤 This is me'}
@@ -431,7 +453,24 @@ function onLineageBranchChange() {
   }
 }
 
+function ensureStewardCheckboxExists() {
+  const submitBtn = document.getElementById("submit-btn");
+  if (!submitBtn || document.getElementById("steward-opt-wrap")) return;
+
+  const wrap = document.createElement("div");
+  wrap.id = "steward-opt-wrap";
+  wrap.style.margin = "10px 0 12px";
+  wrap.innerHTML = `
+    <label style="display:flex; align-items:center; gap:8px; font-size:0.88rem; cursor:pointer;">
+      <input type="checkbox" id="AssignCreatorAsSteward" />
+      <span>I manage this profile (for my child/dependent or elder)</span>
+    </label>
+  `;
+  submitBtn.parentNode.insertBefore(wrap, submitBtn);
+}
+
 function openJoinForm(fromQr = false) {
+  ensureStewardCheckboxExists();
   document.getElementById("join-form").reset();
   document.getElementById("EditMemberID").value = "";
   document.getElementById("form-heading").textContent = fromQr
@@ -439,12 +478,17 @@ function openJoinForm(fromQr = false) {
     : "Join the Family Tree";
   document.getElementById("form-sub").textContent = fromQr
     ? "Select which child of Monica and Lolo your line comes from."
-    : "Add yourself so relatives can connect with you.";
+    : "Add a profile to the family tree.";
   document.getElementById("photo-label").textContent = "Profile Photo";
   document.getElementById("submit-btn").textContent = "✓ Save to Family Tree";
   document.getElementById("role-toggle-wrap").style.display = "grid";
   document.getElementById("relation-group").style.display = "block";
   document.getElementById("RelatedToID").required = true;
+
+  const stewardWrap = document.getElementById("steward-opt-wrap");
+  const stewardCheck = document.getElementById("AssignCreatorAsSteward");
+  if (stewardWrap) stewardWrap.style.display = viewerId ? "block" : "none";
+  if (stewardCheck) stewardCheck.checked = false;
 
   const passkeyGroup = document.getElementById("passkey-group");
   const passkeyInput = document.getElementById("FamilyPasscode");
@@ -462,18 +506,22 @@ function openEditForm(memberId) {
   if (!m) return;
 
   if (!canEditMember(m)) {
-    alert(`You can only update members from your own line branch (${getActiveEditorBranch() || "your branch"}).`);
+    alert("Per-profile protection: you can only edit your own profile or profiles you manage.");
     return;
   }
 
+  ensureStewardCheckboxExists();
   document.getElementById("profile-overlay").style.display = "none";
   document.getElementById("join-form").reset();
 
   document.getElementById("EditMemberID").value = m.MemberID;
   document.getElementById("form-heading").textContent = `Edit Profile: ${m.FullName}`;
-  document.getElementById("form-sub").textContent = "Update your details, birthdate, or profile photo.";
+  document.getElementById("form-sub").textContent = "Update profile details, birthdate, or photo.";
   document.getElementById("photo-label").textContent = "Change Photo (Optional)";
   document.getElementById("submit-btn").textContent = "✓ Save Changes";
+
+  const stewardWrap = document.getElementById("steward-opt-wrap");
+  if (stewardWrap) stewardWrap.style.display = "none";
 
   const passkeyGroup = document.getElementById("passkey-group");
   const passkeyInput = document.getElementById("FamilyPasscode");
@@ -595,7 +643,7 @@ async function submitMember(e) {
   try {
     const existingMember = isEdit ? allMembers.find(x => x.MemberID === editId) : null;
     if (isEdit && existingMember && !canEditMember(existingMember)) {
-      throw new Error(`You can only update members from your own line branch (${getActiveEditorBranch() || "your branch"}).`);
+      throw new Error("Per-profile protection: you can only edit your own profile or profiles you manage.");
     }
 
     const fileInput = document.getElementById("PhotoFile");
@@ -617,9 +665,16 @@ async function submitMember(e) {
       ? document.getElementById("FamilyPasscode").value.trim()
       : "";
 
+    const stewardCheck = document.getElementById("AssignCreatorAsSteward");
+    const assignSteward = Boolean(stewardCheck && stewardCheck.checked && viewerId);
+
     const payload = {
       action: isEdit ? "update" : "create",
       MemberID: editId,
+      ActorMemberID: viewerId,
+      AdminPasscode: adminPasscodeSession,
+      CreatorMemberID: viewerId,
+      AssignCreatorAsSteward: assignSteward,
       Role: isEdit && existingMember && existingMember.Role === "Root" ? "Root" : selectedRole,
       RelatedToID: isEdit && existingMember && existingMember.Role === "Root" ? "" : document.getElementById("RelatedToID").value,
       FullName: document.getElementById("FullName").value.trim(),
@@ -638,7 +693,6 @@ async function submitMember(e) {
         ig: document.getElementById("SocialIG").value.trim()
       },
       LineageBranch: resolvedBranch,
-      EditorLineageBranch: getActiveEditorBranch(),
       FamilyPasscode: familyPasscode
     };
 
@@ -649,7 +703,7 @@ async function submitMember(e) {
     const result = await res.json();
 
     if (result.status === "success") {
-      if (!isEdit) {
+      if (!isEdit && !assignSteward) {
         viewerId = result.memberId;
         localStorage.setItem("family_tree_me_id", viewerId);
         if (resolvedBranch) {
@@ -835,7 +889,6 @@ function closeOverlay(e, id) {
     let lastScrollTop = 0;
 
     const handleVerticalMove = (currentScrollTop) => {
-      // Keep visible if user is typing or dropdown results are open
       if (document.activeElement === searchInput || searchInput.value.trim() !== "") {
         searchWrap.classList.remove("search-hidden");
         return;
@@ -844,10 +897,8 @@ function closeOverlay(e, id) {
       if (currentScrollTop <= 10) {
         searchWrap.classList.remove("search-hidden");
       } else if (currentScrollTop < lastScrollTop - 6) {
-        // Scrolling up -> hide search bar
         searchWrap.classList.add("search-hidden");
       } else if (currentScrollTop > lastScrollTop + 6) {
-        // Scrolling down -> show search bar
         searchWrap.classList.remove("search-hidden");
       }
 
@@ -863,4 +914,3 @@ function closeOverlay(e, id) {
     }, { passive: true });
   });
 })();
-
