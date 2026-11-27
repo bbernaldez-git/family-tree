@@ -3,7 +3,7 @@
 // ==========================================
 const CONFIG = {
   APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycby8PGeCBC9JQLAX1Gh0fqOv5NSWd_oBHZ9fojJERZ0vp-4oFKUYHlmWDSfuuV_9a0YNgg/exec",
-  CLOUDINARY_CLOUD_NAME: "YOUR_CLOUDINARY_CLOUD_NAME",
+  CLOUDINARY_CLOUD_NAME: "di1fg6nu",
   CLOUDINARY_UPLOAD_PRESET: "family_tree_unsigned",
   FAMILY_NAME: "Bernaldez Family Tree"
 };
@@ -12,6 +12,7 @@ let allMembers = [];
 let selectedRole = "Descendant";
 let currentZoom = 1;
 let viewerId = localStorage.getItem("family_tree_me_id") || "";
+let selectedLoginMemberId = "";
 
 // ==========================================
 // 2. INITIALIZATION & DATA FETCHING
@@ -289,7 +290,7 @@ function getRelationshipLabel(me, other) {
 }
 
 // ==========================================
-// 5. PROFILE DRAWER, LOGIN / LOGOUT & NAVIGATION
+// 5. PROFILE DRAWER, LOOKUP+PIN LOGIN & LOGOUT
 // ==========================================
 function renderViewerStatus() {
   const me = allMembers.find(m => m.MemberID === viewerId);
@@ -322,39 +323,249 @@ function renderViewerStatus() {
     `;
   } else {
     bar.innerHTML = `
-      <button type="button" onclick="openLoginPicker()" style="background:#ffffff;color:var(--primary);border:1px solid var(--border);border-radius:999px;padding:2px 8px;font-size:0.74rem;font-weight:600;">👤 Login</button>
+      <button type="button" onclick="openLoginModal()" style="background:#ffffff;color:var(--primary);border:1px solid var(--border);border-radius:999px;padding:2px 8px;font-size:0.74rem;font-weight:600;">👤 Login</button>
     `;
   }
 }
 
-function openLoginPicker() {
-  if (!allMembers.length) return;
-  const listHtml = allMembers
-    .slice()
-    .sort((a, b) => (a.FullName || "").localeCompare(b.FullName || ""))
-    .map(m => {
-      const nick = m.Nickname ? ` (${m.Nickname})` : "";
-      return `
-        <button
-          type="button"
-          class="action-pill"
-          style="width:100%;justify-content:space-between;border-radius:10px;padding:9px 12px;margin-bottom:6px;"
-          onclick="setAsMe('${m.MemberID}')"
-        >
-          <span><strong>${m.FullName}</strong>${nick}</span>
-          <span>Select →</span>
-        </button>
-      `;
-    })
-    .join("");
+function getMemberPin(member) {
+  if (!member) return "";
+  return String(member.Pin ?? member.PIN ?? "").trim();
+}
+
+function findMatchingMembers(query) {
+  const q = (query || "").trim().toLowerCase();
+  if (!q) return [];
+  return allMembers.filter(m => {
+    const nick = (m.Nickname || "").trim().toLowerCase();
+    const full = (m.FullName || "").trim().toLowerCase();
+    const email = (m.Email || "").trim().toLowerCase();
+    return nick === q || full === q || email === q || nick.includes(q) || full.includes(q);
+  });
+}
+
+function openLoginModal(prefillMember = null) {
+  selectedLoginMemberId = prefillMember ? prefillMember.MemberID : "";
+  const prefillValue = prefillMember ? (prefillMember.Nickname || prefillMember.FullName || "") : "";
+  const savedPin = prefillMember ? getMemberPin(prefillMember) : "";
 
   document.getElementById("profile-drawer-content").innerHTML = `
-    <button class="close-drawer" onclick="document.getElementById('profile-overlay').style.display='none'">×</button>
-    <h2 style="margin:0 0 4px;">Select Your Profile</h2>
-    <p class="modal-sub" style="margin-bottom:12px;">Choose who you are so you can view personalized connections and manage your profile.</p>
-    <div style="max-height:60dvh;overflow-y:auto;">${listHtml}</div>
+    <button type="button" class="close-drawer" onclick="document.getElementById('profile-overlay').style.display='none'">×</button>
+    <h2 style="margin:0 0 4px;">Find Your Profile</h2>
+    <p class="modal-sub" style="margin-bottom:14px;">Enter your nickname, full name, or email. Add a PIN if yours has one or if you want to set one.</p>
+
+    <form id="login-form" onsubmit="submitLogin(event)">
+      <div class="form-group" style="position:relative;">
+        <label for="LoginLookup">Nickname, Full Name, or Email *</label>
+        <input
+          type="text"
+          id="LoginLookup"
+          value="${prefillValue.replace(/"/g, "&quot;")}"
+          placeholder="e.g., Nat2, Chie, Yuan, or name@email.com"
+          required
+          autocomplete="off"
+          oninput="onLoginLookupInput(this.value)"
+        />
+        <div id="login-match-box" style="display:none;border:1px solid var(--border);border-radius:8px;background:#fff;margin-top:4px;max-height:160px;overflow-y:auto;"></div>
+      </div>
+
+      <div class="form-group">
+        <label id="login-pin-label" for="LoginPin">${savedPin ? "PIN Number *" : "PIN Number (Optional if none set yet)"}</label>
+        <input
+          type="password"
+          id="LoginPin"
+          inputmode="numeric"
+          pattern="[0-9]{4,8}"
+          placeholder="4–8 digit PIN"
+          ${savedPin ? "required" : ""}
+          autocomplete="off"
+        />
+      </div>
+
+      <div id="login-status-note" style="color:var(--muted);font-size:0.8rem;margin-bottom:8px;min-height:16px;">
+        ${prefillMember ? (savedPin ? "PIN required for this profile." : "No PIN set yet—sign in directly or set a 4-digit PIN.") : ""}
+      </div>
+      <div id="login-error" style="color:#b91c1c;font-size:0.82rem;margin-bottom:8px;min-height:18px;"></div>
+      <button type="submit" id="login-submit-btn" class="btn-primary full-width">Continue to Tree</button>
+    </form>
   `;
   document.getElementById("profile-overlay").style.display = "flex";
+  if (!prefillMember) {
+    setTimeout(() => {
+      const inp = document.getElementById("LoginLookup");
+      if (inp) inp.focus();
+    }, 30);
+  }
+}
+
+function onLoginLookupInput(val) {
+  selectedLoginMemberId = "";
+  const box = document.getElementById("login-match-box");
+  const noteEl = document.getElementById("login-status-note");
+  const pinLabel = document.getElementById("login-pin-label");
+  const pinInput = document.getElementById("LoginPin");
+
+  const q = (val || "").trim().toLowerCase();
+  if (!box || q.length < 2) {
+    if (box) box.style.display = "none";
+    if (noteEl) noteEl.textContent = "";
+    if (pinLabel) pinLabel.textContent = "PIN Number (Optional if none set yet)";
+    if (pinInput) pinInput.required = false;
+    return;
+  }
+
+  const exactMatches = allMembers.filter(m => {
+    const nick = (m.Nickname || "").trim().toLowerCase();
+    const full = (m.FullName || "").trim().toLowerCase();
+    const email = (m.Email || "").trim().toLowerCase();
+    return nick === q || full === q || email === q;
+  });
+
+  const matches = exactMatches.length ? exactMatches : findMatchingMembers(q).slice(0, 5);
+  if (!matches.length) {
+    box.style.display = "none";
+    if (noteEl) noteEl.textContent = "No matching profile found yet—check spelling or ask a relative.";
+    return;
+  }
+
+  if (matches.length === 1 && exactMatches.length === 1) {
+    selectLoginCandidate(matches[0].MemberID, false);
+    box.style.display = "none";
+    return;
+  }
+
+  box.innerHTML = matches.map(m => {
+    const sub = [m.Nickname, m.City].filter(Boolean).join(" • ");
+    return `
+      <button
+        type="button"
+        style="display:flex;justify-content:space-between;align-items:center;width:100%;text-align:left;background:#fff;border:none;border-bottom:1px solid #eef2ee;padding:8px 10px;font-size:0.84rem;"
+        onclick="selectLoginCandidate('${m.MemberID}', true)"
+      >
+        <span><strong>${m.FullName}</strong>${sub ? ` <span style="color:var(--muted);">(${sub})</span>` : ""}</span>
+        <span style="color:var(--primary);font-weight:600;">Pick</span>
+      </button>
+    `;
+  }).join("");
+  box.style.display = "block";
+}
+
+function selectLoginCandidate(memberId, fillInput = true) {
+  const m = allMembers.find(x => x.MemberID === memberId);
+  if (!m) return;
+  selectedLoginMemberId = m.MemberID;
+
+  const input = document.getElementById("LoginLookup");
+  const box = document.getElementById("login-match-box");
+  const noteEl = document.getElementById("login-status-note");
+  const pinLabel = document.getElementById("login-pin-label");
+  const pinInput = document.getElementById("LoginPin");
+
+  if (fillInput && input) {
+    input.value = m.Nickname || m.FullName;
+  }
+  if (box) box.style.display = "none";
+
+  const savedPin = getMemberPin(m);
+  if (pinLabel) {
+    pinLabel.textContent = savedPin ? "PIN Number *" : "PIN Number (Optional — set a 4-digit PIN if you like)";
+  }
+  if (pinInput) {
+    pinInput.required = Boolean(savedPin);
+  }
+  if (noteEl) {
+    noteEl.textContent = savedPin
+      ? `Profile found: ${m.FullName}. Enter your PIN to sign in.`
+      : `Profile found: ${m.FullName}. No PIN set yet—sign in directly or enter a new PIN.`;
+  }
+}
+
+async function submitLogin(e) {
+  e.preventDefault();
+  const lookupInput = document.getElementById("LoginLookup");
+  const pinInput = document.getElementById("LoginPin");
+  const errorEl = document.getElementById("login-error");
+  const btn = document.getElementById("login-submit-btn");
+
+  const query = (lookupInput.value || "").trim();
+  const enteredPin = (pinInput.value || "").trim();
+
+  if (!query) {
+    errorEl.textContent = "Please enter your nickname, full name, or email.";
+    return;
+  }
+
+  let candidate = selectedLoginMemberId
+    ? allMembers.find(m => m.MemberID === selectedLoginMemberId)
+    : null;
+
+  if (!candidate) {
+    const qLower = query.toLowerCase();
+    const exact = allMembers.filter(m => {
+      const nick = (m.Nickname || "").trim().toLowerCase();
+      const full = (m.FullName || "").trim().toLowerCase();
+      const email = (m.Email || "").trim().toLowerCase();
+      return nick === qLower || full === qLower || email === qLower;
+    });
+
+    if (exact.length === 1) {
+      candidate = exact[0];
+    } else if (exact.length > 1) {
+      onLoginLookupInput(query);
+      errorEl.textContent = "Multiple relatives match—tap your profile from the list above.";
+      return;
+    } else {
+      const partial = findMatchingMembers(query);
+      if (partial.length === 1) {
+        candidate = partial[0];
+      } else if (partial.length > 1) {
+        onLoginLookupInput(query);
+        errorEl.textContent = "Tap your name from the matching profiles above.";
+        return;
+      }
+    }
+  }
+
+  if (!candidate) {
+    errorEl.textContent = "Could not find that nickname, name, or email.";
+    return;
+  }
+
+  const savedPin = getMemberPin(candidate);
+  if (savedPin && enteredPin !== savedPin) {
+    errorEl.textContent = "Incorrect PIN for this profile.";
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = "Signing in...";
+  errorEl.textContent = "";
+
+  try {
+    // If user didn't have a PIN saved yet and typed a new PIN, save it if backend supports update
+    if (!savedPin && enteredPin) {
+      candidate.Pin = enteredPin;
+      fetch(CONFIG.APPS_SCRIPT_URL, {
+        method: "POST",
+        body: JSON.stringify({
+          action: "update",
+          MemberID: candidate.MemberID,
+          Pin: enteredPin
+        })
+      }).catch(() => {});
+    }
+
+    viewerId = candidate.MemberID;
+    localStorage.setItem("family_tree_me_id", viewerId);
+    document.getElementById("profile-overlay").style.display = "none";
+    renderViewerStatus();
+    renderTree();
+    generateDidYouKnow();
+    focusMember(viewerId, false);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Continue to Tree";
+  }
 }
 
 function logoutViewer() {
@@ -416,8 +627,8 @@ function openProfile(memberId) {
       ${isMe ? `<button class="action-pill" onclick="openEditForm('${m.MemberID}')">✏️ Edit Profile</button>` : ''}
       ${
         isMe
-          ? `<button class="action-pill" style="background:var(--accent-bg); color:var(--ink);" onclick="logoutViewer()">🚪 Logout ("Not me")</button>`
-          : `<button class="action-pill" style="background:var(--primary-light); color:var(--primary);" onclick="setAsMe('${m.MemberID}')">👤 This is me</button>`
+          ? `<button class="action-pill" style="background:var(--accent-bg); color:var(--ink);" onclick="logoutViewer()">🚪 Logout</button>`
+          : `<button class="action-pill" style="background:var(--primary-light); color:var(--primary);" onclick="openLoginModal(allMembers.find(x => x.MemberID === '${m.MemberID}'))">👤 This is me</button>`
       }
     </div>
   `;
@@ -443,15 +654,6 @@ function openProfile(memberId) {
 
   document.getElementById("profile-drawer-content").innerHTML = html;
   document.getElementById("profile-overlay").style.display = "flex";
-}
-
-function setAsMe(memberId) {
-  viewerId = memberId;
-  localStorage.setItem("family_tree_me_id", memberId);
-  renderViewerStatus();
-  renderTree();
-  generateDidYouKnow();
-  openProfile(memberId);
 }
 
 // ==========================================
@@ -587,6 +789,9 @@ function openEditForm(memberId) {
   document.getElementById("City").value = m.City || "";
   document.getElementById("Email").value = m.Email || "";
 
+  const pinField = document.getElementById("MemberPin");
+  if (pinField) pinField.value = getMemberPin(m);
+
   let socials = {};
   try { socials = JSON.parse(m.Socials || "{}"); } catch (e) {}
   document.getElementById("SocialFB").value = socials.fb || "";
@@ -678,6 +883,7 @@ async function submitMember(e) {
     const existingMember = isEdit ? allMembers.find(x => x.MemberID === editId) : null;
     const passkeyInput = document.getElementById("FamilyPasscode");
     const lineageInput = document.getElementById("LineageBranch");
+    const pinInput = document.getElementById("MemberPin");
 
     const payload = {
       action: isEdit ? "update" : "create",
@@ -697,6 +903,7 @@ async function submitMember(e) {
       Phone: document.getElementById("Phone").value.trim(),
       Email: document.getElementById("Email").value.trim(),
       City: document.getElementById("City").value.trim(),
+      Pin: pinInput ? pinInput.value.trim() : getMemberPin(existingMember),
       Socials: {
         fb: document.getElementById("SocialFB").value.trim(),
         ig: document.getElementById("SocialIG").value.trim()
