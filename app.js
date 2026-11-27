@@ -17,12 +17,13 @@ let viewerId = localStorage.getItem("family_tree_me_id") || "";
 // 2. INITIALIZATION & DATA FETCHING
 // ==========================================
 window.addEventListener("DOMContentLoaded", async () => {
-  document.getElementById("header-title").textContent = CONFIG.FAMILY_NAME;
+  const titleEl = document.getElementById("header-title");
+  if (titleEl) titleEl.textContent = CONFIG.FAMILY_NAME;
   await fetchMembers();
 
   const params = new URLSearchParams(window.location.search);
   if (params.get("action") === "join") {
-    openJoinForm();
+    openJoinForm(false);
   }
 });
 
@@ -32,13 +33,16 @@ async function fetchMembers() {
     const data = await res.json();
     allMembers = data.members || [];
     renderTree();
+    renderViewerStatus();
+    populateLineageOptions();
     populateFormHelpers();
     generateDidYouKnow();
   } catch (err) {
     console.error(err);
     alert("Could not load family tree. Check your Apps Script deployment.");
   } finally {
-    document.getElementById("loader").style.display = "none";
+    const loader = document.getElementById("loader");
+    if (loader) loader.style.display = "none";
   }
 }
 
@@ -61,6 +65,8 @@ function compareBirthDates(a, b) {
 
 function renderTree() {
   const container = document.getElementById("tree-root");
+  if (!container) return;
+
   if (!allMembers.length) {
     container.innerHTML = "<p style='padding:40px; color:var(--muted);'>No members yet. Tap '+ Join Tree' to start!</p>";
     return;
@@ -137,12 +143,57 @@ function buildCardHTML(m, birthOrderInfo) {
 }
 
 // ==========================================
-// 4. "DID YOU KNOW?" FUN FACT ENGINE
+// 4. WELCOME BANNER & "DID YOU KNOW?" ENGINE
 // ==========================================
+function showWelcomeBanner(member) {
+  const displayName = member.Nickname || member.FullName || "relative";
+  let banner = document.getElementById("welcome-banner");
+
+  if (!banner) {
+    const dykBanner = document.getElementById("dyk-banner");
+    banner = document.createElement("div");
+    banner.id = "welcome-banner";
+    banner.style.cssText = [
+      "display:flex",
+      "align-items:center",
+      "justify-content:space-between",
+      "gap:10px",
+      "padding:10px 14px",
+      "margin:8px auto 0",
+      "max-width:920px",
+      "background:var(--primary-light, #e6efe7)",
+      "color:var(--ink, #1f2923)",
+      "border:1px solid var(--primary, #2f5233)",
+      "border-radius:10px",
+      "font-size:0.86rem",
+      "z-index:16"
+    ].join(";");
+
+    if (dykBanner && dykBanner.parentNode) {
+      dykBanner.parentNode.insertBefore(banner, dykBanner);
+    } else {
+      document.body.prepend(banner);
+    }
+  }
+
+  banner.innerHTML = `
+    <div>
+      <strong>Welcome to ${CONFIG.FAMILY_NAME}, ${displayName}!</strong>
+      Browse the tree to explore your family and clan members—tap any card to view profiles, hobbies, sports, and connections.
+    </div>
+    <button type="button" onclick="dismissWelcomeBanner()" style="background:transparent;border:none;font-size:1.15rem;cursor:pointer;color:inherit;padding:2px 6px;" aria-label="Dismiss welcome message">×</button>
+  `;
+  banner.style.display = "flex";
+}
+
+function dismissWelcomeBanner() {
+  const banner = document.getElementById("welcome-banner");
+  if (banner) banner.style.display = "none";
+}
+
 function isImmediateFamily(personA, personB) {
   if (!personA || !personB || personA.MemberID === personB.MemberID) return true;
 
-  // Exclude direct spouses or co-spouses of the same person
   if (
     (personA.Role === "Spouse" && personA.RelatedToID === personB.MemberID) ||
     (personB.Role === "Spouse" && personB.RelatedToID === personA.MemberID) ||
@@ -158,7 +209,7 @@ function isImmediateFamily(personA, personB) {
 function generateDidYouKnow() {
   const banner = document.getElementById("dyk-banner");
   const textEl = document.getElementById("dyk-text");
-  if (allMembers.length < 2) return;
+  if (!banner || !textEl || allMembers.length < 2) return;
 
   const me = allMembers.find(m => m.MemberID === viewerId);
   const facts = [];
@@ -238,16 +289,65 @@ function getRelationshipLabel(me, other) {
 }
 
 // ==========================================
-// 5. PROFILE DRAWER & NAVIGATION
+// 5. PROFILE DRAWER, LOGOUT & NAVIGATION
 // ==========================================
-function focusMember(memberId) {
+function renderViewerStatus() {
+  const me = allMembers.find(m => m.MemberID === viewerId);
+  const actionsWrap = document.querySelector(".header-actions");
+  let bar = document.getElementById("viewer-session-bar");
+
+  if (!me) {
+    if (bar) bar.remove();
+    return;
+  }
+
+  if (!bar) {
+    bar = document.createElement("div");
+    bar.id = "viewer-session-bar";
+    bar.style.cssText = [
+      "display:inline-flex",
+      "align-items:center",
+      "gap:5px",
+      "padding:4px 8px",
+      "border-radius:999px",
+      "background:var(--primary-light, #e6efe7)",
+      "color:var(--primary, #2f5233)",
+      "font-size:0.76rem",
+      "white-space:nowrap"
+    ].join(";");
+
+    if (actionsWrap) {
+      actionsWrap.prepend(bar);
+    }
+  }
+
+  const label = me.Nickname || me.FullName;
+  bar.innerHTML = `
+    <span><strong>${label}</strong></span>
+    <button type="button" onclick="logoutViewer()" style="background:#ffffff;color:var(--ink);border:1px solid var(--border);border-radius:999px;padding:2px 7px;font-size:0.72rem;font-weight:600;">Logout</button>
+  `;
+}
+
+function logoutViewer() {
+  viewerId = "";
+  localStorage.removeItem("family_tree_me_id");
+  const overlay = document.getElementById("profile-overlay");
+  if (overlay) overlay.style.display = "none";
+  renderViewerStatus();
+  renderTree();
+  generateDidYouKnow();
+}
+
+function focusMember(memberId, shouldOpenProfile = true) {
   const node = document.getElementById(`node-${memberId}`);
   if (node) {
     document.querySelectorAll(".member-card").forEach(c => c.classList.remove("highlighted"));
     node.classList.add("highlighted");
     node.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
   }
-  openProfile(memberId);
+  if (shouldOpenProfile) {
+    openProfile(memberId);
+  }
 }
 
 function openProfile(memberId) {
@@ -285,9 +385,11 @@ function openProfile(memberId) {
       ${m.Phone ? `<a href="tel:${m.Phone}" class="action-pill">📞 Call</a><a href="sms:${m.Phone}" class="action-pill">💬 SMS</a>` : ''}
       ${m.Email ? `<a href="mailto:${m.Email}" class="action-pill">✉️ Email</a>` : ''}
       <button class="action-pill" onclick="openEditForm('${m.MemberID}')">✏️ Edit Profile</button>
-      <button class="action-pill" style="background:${isMe ? 'var(--accent-bg)' : 'var(--primary-light)'}; color:var(--primary);" onclick="setAsMe('${m.MemberID}')">
-        ${isMe ? '★ Viewing as You' : '👤 This is me'}
-      </button>
+      ${
+        isMe
+          ? `<button class="action-pill" style="background:var(--accent-bg); color:var(--ink);" onclick="logoutViewer()">🚪 Logout ("Not me")</button>`
+          : `<button class="action-pill" style="background:var(--primary-light); color:var(--primary);" onclick="setAsMe('${m.MemberID}')">👤 This is me</button>`
+      }
     </div>
   `;
 
@@ -317,6 +419,7 @@ function openProfile(memberId) {
 function setAsMe(memberId) {
   viewerId = memberId;
   localStorage.setItem("family_tree_me_id", memberId);
+  renderViewerStatus();
   renderTree();
   generateDidYouKnow();
   openProfile(memberId);
@@ -325,8 +428,57 @@ function setAsMe(memberId) {
 // ==========================================
 // 6. ADD & EDIT FORM + CLOUDINARY UPLOAD
 // ==========================================
+function populateLineageOptions() {
+  const select = document.getElementById("LineageBranch");
+  if (!select) return;
+
+  const currentVal = select.value;
+  const roots = allMembers.filter(m => m.Role === "Root" || !m.RelatedToID);
+  const rootIds = roots.map(r => r.MemberID);
+  const gen1Children = allMembers
+    .filter(m => m.Role === "Descendant" && rootIds.includes(m.RelatedToID))
+    .sort(compareBirthDates);
+
+  const options = ['<option value="">-- Select whose descendant you are --</option>'];
+  gen1Children.forEach(child => {
+    const label = child.Nickname ? `${child.FullName} (${child.Nickname})` : child.FullName;
+    options.push(`<option value="${child.MemberID}">${label}</option>`);
+  });
+  roots.forEach(r => {
+    const label = r.Nickname ? `${r.FullName} (${r.Nickname}) — Root` : `${r.FullName} — Root`;
+    options.push(`<option value="${r.MemberID}">${label}</option>`);
+  });
+
+  select.innerHTML = options.join("");
+  if (currentVal) select.value = currentVal;
+}
+
+function onLineageBranchChange() {
+  const branchSelect = document.getElementById("LineageBranch");
+  const relSelect = document.getElementById("RelatedToID");
+  if (!branchSelect || !relSelect || !branchSelect.value) return;
+
+  const branchId = branchSelect.value;
+  const branchSpouses = allMembers.filter(m => m.Role === "Spouse" && m.RelatedToID === branchId);
+  const parentPool = [branchId, ...branchSpouses.map(s => s.MemberID)];
+  const descendantsInBranch = allMembers.filter(
+    m => m.Role === "Descendant" && (m.MemberID === branchId || parentPool.includes(m.RelatedToID))
+  );
+
+  const validIds = new Set([...parentPool, ...descendantsInBranch.map(d => d.MemberID)]);
+  const candidates = allMembers.filter(m => validIds.has(m.MemberID));
+
+  if (candidates.length) {
+    relSelect.innerHTML = candidates.map(m =>
+      `<option value="${m.MemberID}">${m.FullName} ${m.Nickname ? `(${m.Nickname})` : ''}</option>`
+    ).join("");
+    if (validIds.has(branchId)) relSelect.value = branchId;
+  }
+}
+
 function openJoinForm() {
-  document.getElementById("join-form").reset();
+  const form = document.getElementById("join-form");
+  if (form) form.reset();
   document.getElementById("EditMemberID").value = "";
   document.getElementById("form-heading").textContent = "Join the Family Tree";
   document.getElementById("form-sub").textContent = "Add yourself so relatives can connect with you.";
@@ -335,6 +487,20 @@ function openJoinForm() {
   document.getElementById("role-toggle-wrap").style.display = "grid";
   document.getElementById("relation-group").style.display = "block";
   document.getElementById("RelatedToID").required = true;
+
+  const lineageGroup = document.getElementById("lineage-group");
+  const lineageSelect = document.getElementById("LineageBranch");
+  if (lineageGroup && lineageSelect) {
+    lineageGroup.style.display = "flex";
+    lineageSelect.required = true;
+  }
+
+  const passkeyGroup = document.getElementById("passkey-group");
+  const passkeyInput = document.getElementById("FamilyPasscode");
+  if (passkeyGroup && passkeyInput) {
+    passkeyGroup.style.display = "flex";
+    passkeyInput.required = true;
+  }
 
   setRole("Descendant");
   filterRelativeDropdown("");
@@ -353,6 +519,20 @@ function openEditForm(memberId) {
   document.getElementById("form-sub").textContent = "Update your details, birthdate, or profile photo.";
   document.getElementById("photo-label").textContent = "Change Photo (Optional)";
   document.getElementById("submit-btn").textContent = "✓ Save Changes";
+
+  const lineageGroup = document.getElementById("lineage-group");
+  const lineageSelect = document.getElementById("LineageBranch");
+  if (lineageGroup && lineageSelect) {
+    lineageGroup.style.display = "none";
+    lineageSelect.required = false;
+  }
+
+  const passkeyGroup = document.getElementById("passkey-group");
+  const passkeyInput = document.getElementById("FamilyPasscode");
+  if (passkeyGroup && passkeyInput) {
+    passkeyGroup.style.display = "none";
+    passkeyInput.required = false;
+  }
 
   if (m.Role === "Root") {
     document.getElementById("role-toggle-wrap").style.display = "none";
@@ -420,7 +600,9 @@ function populateFormHelpers() {
   };
 
   const renderChips = (elId, inputId, items) => {
-    document.getElementById(elId).innerHTML = items.map(item =>
+    const el = document.getElementById(elId);
+    if (!el) return;
+    el.innerHTML = items.map(item =>
       `<button type="button" class="chip-btn" onclick="appendTag('${inputId}', '${item.replace(/'/g, "\\'")}')">+ ${item}</button>`
     ).join("");
   };
@@ -465,12 +647,16 @@ async function submitMember(e) {
     const fileInput = document.getElementById("PhotoFile");
     const photoUrl = fileInput.files && fileInput.files[0] ? await uploadToCloudinary(fileInput.files[0]) : "";
     const existingMember = isEdit ? allMembers.find(x => x.MemberID === editId) : null;
+    const passkeyInput = document.getElementById("FamilyPasscode");
+    const lineageInput = document.getElementById("LineageBranch");
 
     const payload = {
       action: isEdit ? "update" : "create",
       MemberID: editId,
       Role: isEdit && existingMember && existingMember.Role === "Root" ? "Root" : selectedRole,
       RelatedToID: isEdit && existingMember && existingMember.Role === "Root" ? "" : document.getElementById("RelatedToID").value,
+      LineageBranch: lineageInput ? lineageInput.value : "",
+      FamilyPasscode: passkeyInput ? passkeyInput.value : "",
       FullName: document.getElementById("FullName").value.trim(),
       Nickname: document.getElementById("Nickname").value.trim(),
       Gender: document.getElementById("Gender").value,
@@ -502,7 +688,17 @@ async function submitMember(e) {
       document.getElementById("join-form").reset();
       document.getElementById("form-overlay").style.display = "none";
       await fetchMembers();
-      focusMember(result.memberId);
+
+      if (!isEdit) {
+        const createdMember = allMembers.find(m => m.MemberID === result.memberId) || {
+          FullName: payload.FullName,
+          Nickname: payload.Nickname
+        };
+        focusMember(result.memberId, false);
+        showWelcomeBanner(createdMember);
+      } else {
+        focusMember(result.memberId, true);
+      }
     } else {
       alert("Error: " + result.message);
     }
@@ -543,9 +739,19 @@ function selectSearch(id) {
   focusMember(id);
 }
 
+function applyZoom() {
+  const canvas = document.getElementById("tree-canvas");
+  if (canvas) canvas.style.transform = `scale(${currentZoom})`;
+}
+
 function adjustZoom(delta) {
-  currentZoom = Math.min(Math.max(0.45, currentZoom + delta), 1.6);
-  document.getElementById("tree-canvas").style.transform = `scale(${currentZoom})`;
+  currentZoom = Math.min(Math.max(0.45, Number((currentZoom + delta).toFixed(2))), 1.6);
+  applyZoom();
+}
+
+function resetZoom() {
+  currentZoom = 1;
+  applyZoom();
 }
 
 function openQrModal() {
