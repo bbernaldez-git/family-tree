@@ -2,7 +2,7 @@
 // 1. CONFIGURATION
 // ==========================================
 const CONFIG = {
-  APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbzzjnGfl0RnXyax8oQdWbROQDVTfLP5ArxnKhayaYVjgN0o4j83E1BwKu-gwVQ-zeU4cg/exec",
+  APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycby8PGeCBC9JQLAX1Gh0fqOv5NSWd_oBHZ9fojJERZ0vp-4oFKUYHlmWDSfuuV_9a0YNgg/exec",
   CLOUDINARY_CLOUD_NAME: "di1fg6nu",
   CLOUDINARY_UPLOAD_PRESET: "family_tree_unsigned",
   FAMILY_NAME: "Bernaldez Family Tree"
@@ -30,16 +30,20 @@ let currentZoom = 1;
 let hasUserAdjustedZoom = false;
 let viewerId = localStorage.getItem("family_tree_me_id") || "";
 let viewerBranch = localStorage.getItem("family_tree_branch") || "";
+let authenticatedMemberId = sessionStorage.getItem("family_tree_auth_id") || "";
+let authenticatedPin = sessionStorage.getItem("family_tree_auth_pin") || "";
 let adminPasscode = sessionStorage.getItem("family_tree_admin_code") || "";
 
 // ==========================================
-// 2. INITIALIZATION & DATA FETCHING
+// 2. INITIALIZATION, AUTH & DATA FETCHING
 // ==========================================
 window.addEventListener("DOMContentLoaded", async () => {
   const titleEl = document.getElementById("header-title");
   if (titleEl) titleEl.textContent = CONFIG.FAMILY_NAME;
-  ensureAdminButtonExists();
+  ensureAuthButtonsExist();
+  ensureJoinPinFieldExists();
   await fetchMembers();
+  refreshAuthButtons();
 
   const params = new URLSearchParams(window.location.search);
   if (params.get("action") === "join") {
@@ -47,27 +51,55 @@ window.addEventListener("DOMContentLoaded", async () => {
   }
 });
 
-function ensureAdminButtonExists() {
-  if (document.getElementById("admin-login-btn")) return;
+function ensureAuthButtonsExist() {
   const header = document.querySelector("header") || document.body;
-  const btn = document.createElement("button");
-  btn.id = "admin-login-btn";
-  btn.type = "button";
-  btn.style.marginLeft = "auto";
-  btn.style.padding = "6px 10px";
-  btn.style.borderRadius = "8px";
-  btn.style.border = "1px solid #cbd5e1";
-  btn.style.background = "#ffffff";
-  btn.style.cursor = "pointer";
-  btn.style.fontSize = "0.82rem";
-  btn.onclick = handleAdminLoginClick;
-  refreshAdminButtonLabel(btn);
-  header.appendChild(btn);
+
+  if (!document.getElementById("profile-login-btn")) {
+    const loginBtn = document.createElement("button");
+    loginBtn.id = "profile-login-btn";
+    loginBtn.type = "button";
+    loginBtn.style.marginLeft = "auto";
+    loginBtn.style.padding = "6px 10px";
+    loginBtn.style.borderRadius = "8px";
+    loginBtn.style.border = "1px solid #cbd5e1";
+    loginBtn.style.background = "#ffffff";
+    loginBtn.style.cursor = "pointer";
+    loginBtn.style.fontSize = "0.82rem";
+    loginBtn.onclick = openProfileLoginModal;
+    header.appendChild(loginBtn);
+  }
+
+  if (!document.getElementById("admin-login-btn")) {
+    const adminBtn = document.createElement("button");
+    adminBtn.id = "admin-login-btn";
+    adminBtn.type = "button";
+    adminBtn.style.marginLeft = "6px";
+    adminBtn.style.padding = "6px 10px";
+    adminBtn.style.borderRadius = "8px";
+    adminBtn.style.border = "1px solid #cbd5e1";
+    adminBtn.style.background = "#ffffff";
+    adminBtn.style.cursor = "pointer";
+    adminBtn.style.fontSize = "0.82rem";
+    adminBtn.onclick = handleAdminLoginClick;
+    header.appendChild(adminBtn);
+  }
+
+  refreshAuthButtons();
 }
 
-function refreshAdminButtonLabel(btn = document.getElementById("admin-login-btn")) {
-  if (!btn) return;
-  btn.textContent = adminPasscode ? "🔓 Admin (Active)" : "🔐 Admin Login";
+function refreshAuthButtons() {
+  const loginBtn = document.getElementById("profile-login-btn");
+  if (loginBtn) {
+    const loggedInMember = allMembers.find(m => m.MemberID === authenticatedMemberId);
+    loginBtn.textContent = loggedInMember
+      ? `👤 ${loggedInMember.Nickname || loggedInMember.FullName}`
+      : "🔑 Profile Login";
+  }
+
+  const adminBtn = document.getElementById("admin-login-btn");
+  if (adminBtn) {
+    adminBtn.textContent = adminPasscode ? "🔓 Admin (Active)" : "🔐 Admin Login";
+  }
 }
 
 async function handleAdminLoginClick() {
@@ -76,7 +108,7 @@ async function handleAdminLoginClick() {
     if (logout) {
       adminPasscode = "";
       sessionStorage.removeItem("family_tree_admin_code");
-      refreshAdminButtonLabel();
+      refreshAuthButtons();
     }
     return;
   }
@@ -96,11 +128,206 @@ async function handleAdminLoginClick() {
     }
     adminPasscode = code.trim();
     sessionStorage.setItem("family_tree_admin_code", adminPasscode);
-    refreshAdminButtonLabel();
+    refreshAuthButtons();
     alert("Admin mode enabled. You now have full edit control across all profiles.");
   } catch (err) {
     console.error(err);
     alert("Could not verify admin passcode.");
+  }
+}
+
+function ensureProfileLoginModalExists() {
+  if (document.getElementById("profile-login-overlay")) return;
+
+  const overlay = document.createElement("div");
+  overlay.id = "profile-login-overlay";
+  overlay.style.cssText = [
+    "display:none",
+    "position:fixed",
+    "inset:0",
+    "background:rgba(15,23,42,0.5)",
+    "align-items:center",
+    "justify-content:center",
+    "z-index:2000",
+    "padding:16px"
+  ].join(";");
+
+  overlay.addEventListener("click", (e) => {
+    if (e.target.id === "profile-login-overlay") closeProfileLoginModal();
+  });
+
+  overlay.innerHTML = `
+    <div style="background:#ffffff; width:100%; max-width:380px; border-radius:14px; padding:20px; box-shadow:0 16px 40px rgba(0,0,0,0.18);">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <h3 style="margin:0; font-size:1.05rem;">Log In to Your Profile</h3>
+        <button type="button" onclick="closeProfileLoginModal()" style="border:none; background:none; font-size:1.3rem; cursor:pointer;">×</button>
+      </div>
+      <p style="margin:0 0 14px; font-size:0.85rem; color:#64748b;">
+        Select your profile and enter your PIN to edit your own details.
+      </p>
+
+      <form id="profile-login-form" onsubmit="submitProfileLogin(event)">
+        <label style="display:block; font-size:0.82rem; font-weight:600; margin-bottom:4px;">Find Your Name</label>
+        <input
+          type="text"
+          id="login-name-filter"
+          placeholder="Type name or nickname..."
+          oninput="populateLoginMemberSelect(this.value)"
+          style="width:100%; padding:8px 10px; margin-bottom:8px; border:1px solid #cbd5e1; border-radius:8px; box-sizing:border-box;"
+        />
+
+        <label style="display:block; font-size:0.82rem; font-weight:600; margin-bottom:4px;">Select Profile *</label>
+        <select
+          id="login-member-select"
+          required
+          style="width:100%; padding:8px 10px; margin-bottom:12px; border:1px solid #cbd5e1; border-radius:8px; box-sizing:border-box;"
+        ></select>
+
+        <label style="display:block; font-size:0.82rem; font-weight:600; margin-bottom:4px;">Your PIN *</label>
+        <input
+          type="password"
+          id="login-pin-input"
+          inputmode="numeric"
+          autocomplete="current-password"
+          placeholder="Enter your PIN"
+          required
+          style="width:100%; padding:8px 10px; margin-bottom:14px; border:1px solid #cbd5e1; border-radius:8px; box-sizing:border-box;"
+        />
+
+        <div id="login-error-msg" style="color:#dc2626; font-size:0.82rem; margin-bottom:10px; display:none;"></div>
+
+        <div style="display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap;">
+          ${authenticatedMemberId
+            ? `<button type="button" onclick="logoutProfileSession()" style="padding:8px 12px; border-radius:8px; border:1px solid #fca5a5; background:#fef2f2; color:#b91c1c; cursor:pointer;">Log Out</button>`
+            : ""
+          }
+          <button type="button" onclick="closeProfileLoginModal()" style="padding:8px 12px; border-radius:8px; border:1px solid #cbd5e1; background:#f8fafc; cursor:pointer;">Cancel</button>
+          <button type="submit" id="login-submit-btn" style="padding:8px 14px; border-radius:8px; border:none; background:#2f5233; color:#ffffff; font-weight:600; cursor:pointer;">Log In</button>
+        </div>
+      </form>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+}
+
+function populateLoginMemberSelect(filterText = "") {
+  const select = document.getElementById("login-member-select");
+  if (!select) return;
+  const q = filterText.trim().toLowerCase();
+
+  const matches = allMembers.filter(m =>
+    !q ||
+    (m.FullName || "").toLowerCase().includes(q) ||
+    (m.Nickname || "").toLowerCase().includes(q)
+  );
+
+  select.innerHTML = matches.length
+    ? matches.map(m => `<option value="${m.MemberID}">${m.FullName}${m.Nickname ? ` (${m.Nickname})` : ""}</option>`).join("")
+    : `<option value="">No matching profile</option>`;
+
+  if (authenticatedMemberId && matches.some(m => m.MemberID === authenticatedMemberId)) {
+    select.value = authenticatedMemberId;
+  }
+}
+
+function openProfileLoginModal() {
+  ensureProfileLoginModalExists();
+  const form = document.getElementById("profile-login-form");
+  if (form) form.reset();
+  const errEl = document.getElementById("login-error-msg");
+  if (errEl) {
+    errEl.style.display = "none";
+    errEl.textContent = "";
+  }
+  populateLoginMemberSelect("");
+  document.getElementById("profile-login-overlay").style.display = "flex";
+  setTimeout(() => {
+    const pinInput = document.getElementById("login-pin-input");
+    if (pinInput) pinInput.focus();
+  }, 50);
+}
+
+function closeProfileLoginModal() {
+  const overlay = document.getElementById("profile-login-overlay");
+  if (overlay) overlay.style.display = "none";
+}
+
+function logoutProfileSession() {
+  authenticatedMemberId = "";
+  authenticatedPin = "";
+  sessionStorage.removeItem("family_tree_auth_id");
+  sessionStorage.removeItem("family_tree_auth_pin");
+  refreshAuthButtons();
+  closeProfileLoginModal();
+  renderTree();
+  generateDidYouKnow();
+}
+
+async function submitProfileLogin(e) {
+  e.preventDefault();
+  const select = document.getElementById("login-member-select");
+  const pinInput = document.getElementById("login-pin-input");
+  const submitBtn = document.getElementById("login-submit-btn");
+  const errEl = document.getElementById("login-error-msg");
+
+  const memberId = select ? select.value : "";
+  const pin = pinInput ? pinInput.value.trim() : "";
+
+  if (!memberId || !pin) return;
+
+  submitBtn.disabled = true;
+  submitBtn.textContent = "Checking...";
+  if (errEl) errEl.style.display = "none";
+
+  try {
+    const res = await fetch(CONFIG.APPS_SCRIPT_URL, {
+      method: "POST",
+      body: JSON.stringify({
+        action: "profileLogin",
+        MemberID: memberId,
+        ProfilePIN: pin
+      })
+    });
+    const result = await res.json();
+
+    if (result.status !== "success") {
+      if (errEl) {
+        errEl.textContent = result.message || "Invalid PIN.";
+        errEl.style.display = "block";
+      } else {
+        alert(result.message || "Invalid PIN.");
+      }
+      return;
+    }
+
+    authenticatedMemberId = result.memberId || memberId;
+    authenticatedPin = pin;
+    viewerId = authenticatedMemberId;
+    sessionStorage.setItem("family_tree_auth_id", authenticatedMemberId);
+    sessionStorage.setItem("family_tree_auth_pin", authenticatedPin);
+    localStorage.setItem("family_tree_me_id", viewerId);
+
+    const me = allMembers.find(m => m.MemberID === viewerId);
+    if (me) {
+      viewerBranch = resolveMemberBranch(me);
+      if (viewerBranch) localStorage.setItem("family_tree_branch", viewerBranch);
+    }
+
+    refreshAuthButtons();
+    closeProfileLoginModal();
+    renderTree();
+    generateDidYouKnow();
+    focusMember(authenticatedMemberId);
+  } catch (err) {
+    console.error(err);
+    if (errEl) {
+      errEl.textContent = "Could not connect to server. Please try again.";
+      errEl.style.display = "block";
+    }
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Log In";
   }
 }
 
@@ -188,7 +415,7 @@ function resolveMemberBranch(member) {
 function canEditMember(targetMember) {
   if (!targetMember) return false;
   if (adminPasscode) return true;
-  return Boolean(viewerId && targetMember.MemberID === viewerId);
+  return Boolean(authenticatedMemberId && targetMember.MemberID === authenticatedMemberId);
 }
 
 function renderTree() {
@@ -427,10 +654,10 @@ function openProfile(memberId) {
       ${m.Email ? `<a href="mailto:${m.Email}" class="action-pill">✉️ Email</a>` : ''}
       ${editable
         ? `<button class="action-pill" onclick="openEditForm('${m.MemberID}')">✏️ Edit Profile</button>`
-        : `<span class="action-pill" style="opacity:0.65; cursor:not-allowed;">🔒 View Only</span>`
+        : `<button class="action-pill" onclick="openProfileLoginModal()">🔑 Log In to Edit</button>`
       }
       <button class="action-pill" style="background:${isMe ? 'var(--accent-bg)' : 'var(--primary-light)'}; color:var(--primary);" onclick="setAsMe('${m.MemberID}')">
-        ${isMe ? '★ Viewing as You' : '👤 This is me'}
+        ${isMe ? '★ Viewing as You' : '👁️ View as Me'}
       </button>
     </div>
   `;
@@ -474,6 +701,29 @@ function setAsMe(memberId) {
 // ==========================================
 // 6. ADD & EDIT FORM + CLOUDINARY UPLOAD
 // ==========================================
+function ensureJoinPinFieldExists() {
+  const form = document.getElementById("join-form");
+  const submitBtn = document.getElementById("submit-btn");
+  if (!form || !submitBtn || document.getElementById("ProfilePIN")) return;
+
+  const wrap = document.createElement("div");
+  wrap.id = "profile-pin-group";
+  wrap.style.margin = "10px 0 12px";
+  wrap.innerHTML = `
+    <label id="profile-pin-label" for="ProfilePIN" style="display:block; font-size:0.85rem; font-weight:600; margin-bottom:4px;">
+      Set Your Profile PIN *
+    </label>
+    <input
+      type="password"
+      id="ProfilePIN"
+      inputmode="numeric"
+      placeholder="e.g. 1234 (used to log back in later)"
+      style="width:100%; padding:8px 10px; border:1px solid #cbd5e1; border-radius:8px; box-sizing:border-box;"
+    />
+  `;
+  submitBtn.parentNode.insertBefore(wrap, submitBtn);
+}
+
 function populateLineageBranchSelect(selectedValue = "") {
   const select = document.getElementById("LineageBranch");
   if (!select) return;
@@ -509,19 +759,30 @@ function onLineageBranchChange() {
 }
 
 function openJoinForm(fromQr = false) {
+  ensureJoinPinFieldExists();
   document.getElementById("join-form").reset();
   document.getElementById("EditMemberID").value = "";
   document.getElementById("form-heading").textContent = fromQr
     ? "Join via 2nd Line (Grandparent)"
     : "Join the Family Tree";
   document.getElementById("form-sub").textContent = fromQr
-    ? "Choose your grandfather or grandmother's line to join and manage your own profile."
+    ? "Choose your grandfather or grandmother's line and set a PIN so only you can edit your profile."
     : "Add your profile to view the tree and edit your own details.";
   document.getElementById("photo-label").textContent = "Profile Photo";
   document.getElementById("submit-btn").textContent = "✓ Save to Family Tree";
   document.getElementById("role-toggle-wrap").style.display = "grid";
   document.getElementById("relation-group").style.display = "block";
   document.getElementById("RelatedToID").required = true;
+
+  const pinGroup = document.getElementById("profile-pin-group");
+  const pinLabel = document.getElementById("profile-pin-label");
+  const pinInput = document.getElementById("ProfilePIN");
+  if (pinGroup) pinGroup.style.display = "block";
+  if (pinLabel) pinLabel.textContent = "Set Your Profile PIN *";
+  if (pinInput) {
+    pinInput.required = true;
+    pinInput.placeholder = "e.g. 1234 (used to log back in later)";
+  }
 
   const passkeyGroup = document.getElementById("passkey-group");
   const passkeyInput = document.getElementById("FamilyPasscode");
@@ -539,18 +800,33 @@ function openEditForm(memberId) {
   if (!m) return;
 
   if (!canEditMember(m)) {
-    alert("You can only edit your own profile. Use Admin Login for full control.");
+    alert("You can only edit your own profile. Use Profile Login or Admin Login.");
     return;
   }
 
+  ensureJoinPinFieldExists();
   document.getElementById("profile-overlay").style.display = "none";
   document.getElementById("join-form").reset();
 
   document.getElementById("EditMemberID").value = m.MemberID;
   document.getElementById("form-heading").textContent = `Edit Profile: ${m.FullName}`;
-  document.getElementById("form-sub").textContent = "Update your details, birthdate, or profile photo.";
+  document.getElementById("form-sub").textContent = "Update profile details, birthdate, or photo.";
   document.getElementById("photo-label").textContent = "Change Photo (Optional)";
   document.getElementById("submit-btn").textContent = "✓ Save Changes";
+
+  const pinGroup = document.getElementById("profile-pin-group");
+  const pinLabel = document.getElementById("profile-pin-label");
+  const pinInput = document.getElementById("ProfilePIN");
+  if (pinGroup) pinGroup.style.display = "block";
+  if (pinLabel) {
+    pinLabel.textContent = adminPasscode
+      ? "Set / Reset Profile PIN (Optional)"
+      : "Change Profile PIN (Optional)";
+  }
+  if (pinInput) {
+    pinInput.required = false;
+    pinInput.placeholder = "Leave blank to keep current PIN";
+  }
 
   const passkeyGroup = document.getElementById("passkey-group");
   const passkeyInput = document.getElementById("FamilyPasscode");
@@ -675,7 +951,7 @@ async function submitMember(e) {
   try {
     const existingMember = isEdit ? allMembers.find(x => x.MemberID === editId) : null;
     if (isEdit && existingMember && !canEditMember(existingMember)) {
-      throw new Error("You can only edit your own profile. Use Admin Login for full control.");
+      throw new Error("You can only edit your own profile. Use Profile Login or Admin Login.");
     }
 
     const fileInput = document.getElementById("PhotoFile");
@@ -697,10 +973,16 @@ async function submitMember(e) {
       ? document.getElementById("FamilyPasscode").value.trim()
       : "";
 
+    const pinInputVal = document.getElementById("ProfilePIN")
+      ? document.getElementById("ProfilePIN").value.trim()
+      : "";
+
     const payload = {
       action: isEdit ? "update" : "create",
       MemberID: editId,
-      ActorMemberID: viewerId,
+      ActorMemberID: isEdit && editId === authenticatedMemberId ? authenticatedMemberId : viewerId,
+      ProfilePIN: isEdit && editId === authenticatedMemberId ? authenticatedPin : pinInputVal,
+      NewProfilePIN: isEdit ? pinInputVal : "",
       AdminPasscode: adminPasscode,
       Role: isEdit && existingMember && existingMember.Role === "Root" ? "Root" : selectedRole,
       RelatedToID: isEdit && existingMember && existingMember.Role === "Root" ? "" : document.getElementById("RelatedToID").value,
@@ -732,12 +1014,23 @@ async function submitMember(e) {
     if (result.status === "success") {
       if (!isEdit) {
         viewerId = result.memberId;
+        authenticatedMemberId = result.memberId;
+        authenticatedPin = pinInputVal;
         localStorage.setItem("family_tree_me_id", viewerId);
+        sessionStorage.setItem("family_tree_auth_id", authenticatedMemberId);
+        if (pinInputVal) {
+          sessionStorage.setItem("family_tree_auth_pin", pinInputVal);
+        }
         if (resolvedBranch) {
           viewerBranch = resolvedBranch;
           localStorage.setItem("family_tree_branch", viewerBranch);
         }
+        refreshAuthButtons();
+      } else if (editId === authenticatedMemberId && pinInputVal) {
+        authenticatedPin = pinInputVal;
+        sessionStorage.setItem("family_tree_auth_pin", authenticatedPin);
       }
+
       document.getElementById("join-form").reset();
       document.getElementById("form-overlay").style.display = "none";
       await fetchMembers();
