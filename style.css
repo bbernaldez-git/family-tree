@@ -663,3 +663,21 @@ button {
     padding: 1px 6px;
   }
 }
+
+/* Smooth Hide-on-Scroll Search Bar */
+.search-wrap {
+  position: sticky;
+  top: 0;
+  z-index: 18;
+  padding: 10px 16px;
+  background: rgba(245, 243, 237, 0.92);
+  backdrop-filter: blur(6px);
+  border-bottom: 1px solid var(--border);
+  transition: transform 0.25s ease, opacity 0.2s ease;
+}
+
+.search-wrap.search-hidden {
+  transform: translateY(-100%);
+  opacity: 0;
+  pointer-events: none;
+}
