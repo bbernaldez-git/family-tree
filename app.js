@@ -11,7 +11,7 @@ const CONFIG = {
 const LINEAGE_BRANCHES = [
   "Crispin Bernaldez",
   "David Bernaldez",
-  "Wenefreda",
+  "Wenifreda Moral",
   "Oscar Bernaldez",
   "Joe Bernaldez",
   "Josephine Hermosura",
@@ -821,3 +821,46 @@ function openQrModal() {
 function closeOverlay(e, id) {
   if (e.target.id === id) document.getElementById(id).style.display = "none";
 }
+
+// ==========================================
+// 8. HIDE SEARCH BAR ON SCROLL UP, SHOW ON SCROLL DOWN
+// ==========================================
+(function initSearchScrollBehavior() {
+  document.addEventListener("DOMContentLoaded", () => {
+    const searchWrap = document.querySelector(".search-wrap");
+    const searchInput = document.getElementById("search-input");
+    const viewport = document.querySelector(".tree-viewport");
+    if (!searchWrap || !viewport) return;
+
+    let lastScrollTop = 0;
+
+    const handleVerticalMove = (currentScrollTop) => {
+      // Keep visible if user is typing or dropdown results are open
+      if (document.activeElement === searchInput || searchInput.value.trim() !== "") {
+        searchWrap.classList.remove("search-hidden");
+        return;
+      }
+
+      if (currentScrollTop <= 10) {
+        searchWrap.classList.remove("search-hidden");
+      } else if (currentScrollTop < lastScrollTop - 6) {
+        // Scrolling up -> hide search bar
+        searchWrap.classList.add("search-hidden");
+      } else if (currentScrollTop > lastScrollTop + 6) {
+        // Scrolling down -> show search bar
+        searchWrap.classList.remove("search-hidden");
+      }
+
+      lastScrollTop = Math.max(0, currentScrollTop);
+    };
+
+    viewport.addEventListener("scroll", () => {
+      handleVerticalMove(viewport.scrollTop);
+    }, { passive: true });
+
+    window.addEventListener("scroll", () => {
+      handleVerticalMove(window.scrollY);
+    }, { passive: true });
+  });
+})();
+
