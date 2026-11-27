@@ -289,18 +289,14 @@ function getRelationshipLabel(me, other) {
 }
 
 // ==========================================
-// 5. PROFILE DRAWER, LOGOUT & NAVIGATION
+// 5. PROFILE DRAWER, LOGIN / LOGOUT & NAVIGATION
 // ==========================================
 function renderViewerStatus() {
   const me = allMembers.find(m => m.MemberID === viewerId);
   const actionsWrap = document.querySelector(".header-actions");
+  if (!actionsWrap) return;
+
   let bar = document.getElementById("viewer-session-bar");
-
-  if (!me) {
-    if (bar) bar.remove();
-    return;
-  }
-
   if (!bar) {
     bar = document.createElement("div");
     bar.id = "viewer-session-bar";
@@ -315,17 +311,50 @@ function renderViewerStatus() {
       "font-size:0.76rem",
       "white-space:nowrap"
     ].join(";");
-
-    if (actionsWrap) {
-      actionsWrap.prepend(bar);
-    }
+    actionsWrap.prepend(bar);
   }
 
-  const label = me.Nickname || me.FullName;
-  bar.innerHTML = `
-    <span><strong>${label}</strong></span>
-    <button type="button" onclick="logoutViewer()" style="background:#ffffff;color:var(--ink);border:1px solid var(--border);border-radius:999px;padding:2px 7px;font-size:0.72rem;font-weight:600;">Logout</button>
+  if (me) {
+    const label = me.Nickname || me.FullName;
+    bar.innerHTML = `
+      <span><strong>${label}</strong></span>
+      <button type="button" onclick="logoutViewer()" style="background:#ffffff;color:var(--ink);border:1px solid var(--border);border-radius:999px;padding:2px 7px;font-size:0.72rem;font-weight:600;">Logout</button>
+    `;
+  } else {
+    bar.innerHTML = `
+      <button type="button" onclick="openLoginPicker()" style="background:#ffffff;color:var(--primary);border:1px solid var(--border);border-radius:999px;padding:2px 8px;font-size:0.74rem;font-weight:600;">👤 Login</button>
+    `;
+  }
+}
+
+function openLoginPicker() {
+  if (!allMembers.length) return;
+  const listHtml = allMembers
+    .slice()
+    .sort((a, b) => (a.FullName || "").localeCompare(b.FullName || ""))
+    .map(m => {
+      const nick = m.Nickname ? ` (${m.Nickname})` : "";
+      return `
+        <button
+          type="button"
+          class="action-pill"
+          style="width:100%;justify-content:space-between;border-radius:10px;padding:9px 12px;margin-bottom:6px;"
+          onclick="setAsMe('${m.MemberID}')"
+        >
+          <span><strong>${m.FullName}</strong>${nick}</span>
+          <span>Select →</span>
+        </button>
+      `;
+    })
+    .join("");
+
+  document.getElementById("profile-drawer-content").innerHTML = `
+    <button class="close-drawer" onclick="document.getElementById('profile-overlay').style.display='none'">×</button>
+    <h2 style="margin:0 0 4px;">Select Your Profile</h2>
+    <p class="modal-sub" style="margin-bottom:12px;">Choose who you are so you can view personalized connections and manage your profile.</p>
+    <div style="max-height:60dvh;overflow-y:auto;">${listHtml}</div>
   `;
+  document.getElementById("profile-overlay").style.display = "flex";
 }
 
 function logoutViewer() {
@@ -384,7 +413,7 @@ function openProfile(memberId) {
     <div class="action-row">
       ${m.Phone ? `<a href="tel:${m.Phone}" class="action-pill">📞 Call</a><a href="sms:${m.Phone}" class="action-pill">💬 SMS</a>` : ''}
       ${m.Email ? `<a href="mailto:${m.Email}" class="action-pill">✉️ Email</a>` : ''}
-      <button class="action-pill" onclick="openEditForm('${m.MemberID}')">✏️ Edit Profile</button>
+      ${isMe ? `<button class="action-pill" onclick="openEditForm('${m.MemberID}')">✏️ Edit Profile</button>` : ''}
       ${
         isMe
           ? `<button class="action-pill" style="background:var(--accent-bg); color:var(--ink);" onclick="logoutViewer()">🚪 Logout ("Not me")</button>`
