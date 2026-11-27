@@ -2,7 +2,7 @@
 // 1. CONFIGURATION
 // ==========================================
 const CONFIG = {
-  APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbzgeK3LlGMQzLAnl4VpqpP-LyTKHojurzfKm9eSOFj4VHPnZDUPVpKOSlilOuQrV4Ew9g/exec",
+  APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbzXd6F35DRwgxQ3T1-M82TeKPuVy4Ea_mp2n0NW2DT70ONOTn_0_NDK8nulOmPwhA0hKA/exec",
   CLOUDINARY_CLOUD_NAME: "di1fg6nu",
   CLOUDINARY_UPLOAD_PRESET: "family_tree_unsigned",
   FAMILY_NAME: "Bernaldez Family Tree"
@@ -15,8 +15,33 @@ let viewerId = localStorage.getItem("family_tree_me_id") || "";
 let selectedLoginMemberId = "";
 
 // ==========================================
-// 2. INITIALIZATION & DATA FETCHING
+// 2. DATE FORMATTING & INITIALIZATION
 // ==========================================
+function formatBirthDate(dateStr) {
+  if (!dateStr) return "";
+  const raw = String(dateStr).trim();
+  if (!raw) return "";
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    return raw;
+  }
+
+  const stripped = raw
+    .replace(/\s+\d{2}:\d{2}:\d{2}.*$/, "")
+    .trim();
+
+  const parsed = Date.parse(stripped || raw);
+  if (!Number.isNaN(parsed)) {
+    const d = new Date(parsed);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  return stripped || raw;
+}
+
 window.addEventListener("DOMContentLoaded", async () => {
   const titleEl = document.getElementById("header-title");
   if (titleEl) titleEl.textContent = CONFIG.FAMILY_NAME;
@@ -32,7 +57,10 @@ async function fetchMembers() {
   try {
     const res = await fetch(CONFIG.APPS_SCRIPT_URL);
     const data = await res.json();
-    allMembers = data.members || [];
+    allMembers = (data.members || []).map(m => ({
+      ...m,
+      BirthDate: formatBirthDate(m.BirthDate)
+    }));
     renderTree();
     renderViewerStatus();
     populateLineageOptions();
@@ -51,9 +79,9 @@ async function fetchMembers() {
 // 3. TREE RENDERING ENGINE (WITH BIRTH ORDER)
 // ==========================================
 function parseBirthDateValue(dateStr) {
-  if (!dateStr || !String(dateStr).trim()) return Number.POSITIVE_INFINITY;
-  const cleaned = String(dateStr).trim();
-  const parsed = Date.parse(cleaned);
+  const clean = formatBirthDate(dateStr);
+  if (!clean) return Number.POSITIVE_INFINITY;
+  const parsed = Date.parse(clean);
   return Number.isNaN(parsed) ? Number.POSITIVE_INFINITY : parsed;
 }
 
@@ -61,7 +89,7 @@ function compareBirthDates(a, b) {
   const timeA = parseBirthDateValue(a.BirthDate);
   const timeB = parseBirthDateValue(b.BirthDate);
   if (timeA !== timeB) return timeA - timeB;
-  return (a.BirthDate || "9999").localeCompare(b.BirthDate || "9999");
+  return (formatBirthDate(a.BirthDate) || "9999").localeCompare(formatBirthDate(b.BirthDate) || "9999");
 }
 
 function renderTree() {
@@ -330,7 +358,7 @@ function renderViewerStatus() {
 
 function getMemberPin(member) {
   if (!member) return "";
-  return String(member.Pin ?? member.PIN ?? "").trim();
+  return String(member.Pin ?? member.PIN ?? member.ProfilePIN ?? "").trim();
 }
 
 function findMatchingMembers(query) {
@@ -348,6 +376,7 @@ function openLoginModal(prefillMember = null) {
   selectedLoginMemberId = prefillMember ? prefillMember.MemberID : "";
   const prefillValue = prefillMember ? (prefillMember.Nickname || prefillMember.FullName || "") : "";
   const savedPin = prefillMember ? getMemberPin(prefillMember) : "";
+  const pinRequired = prefillMember ? Boolean(prefillMember.HasPIN || savedPin) : false;
 
   document.getElementById("profile-drawer-content").innerHTML = `
     <button type="button" class="close-drawer" onclick="document.getElementById('profile-overlay').style.display='none'">×</button>
@@ -370,20 +399,20 @@ function openLoginModal(prefillMember = null) {
       </div>
 
       <div class="form-group">
-        <label id="login-pin-label" for="LoginPin">${savedPin ? "PIN Number *" : "PIN Number (Optional if none set yet)"}</label>
+        <label id="login-pin-label" for="LoginPin">${pinRequired ? "PIN Number *" : "PIN Number (Optional if none set yet)"}</label>
         <input
           type="password"
           id="LoginPin"
           inputmode="numeric"
           pattern="[0-9]{4,8}"
           placeholder="4–8 digit PIN"
-          ${savedPin ? "required" : ""}
+          ${pinRequired ? "required" : ""}
           autocomplete="off"
         />
       </div>
 
       <div id="login-status-note" style="color:var(--muted);font-size:0.8rem;margin-bottom:8px;min-height:16px;">
-        ${prefillMember ? (savedPin ? "PIN required for this profile." : "No PIN set yet—sign in directly or set a 4-digit PIN.") : ""}
+        ${prefillMember ? (pinRequired ? "PIN required for this profile." : "No PIN set yet—sign in directly or set a 4-digit PIN.") : ""}
       </div>
       <div id="login-error" style="color:#b91c1c;font-size:0.82rem;margin-bottom:8px;min-height:18px;"></div>
       <button type="submit" id="login-submit-btn" class="btn-primary full-width">Continue to Tree</button>
@@ -466,15 +495,15 @@ function selectLoginCandidate(memberId, fillInput = true) {
   }
   if (box) box.style.display = "none";
 
-  const savedPin = getMemberPin(m);
+  const pinRequired = Boolean(m.HasPIN || getMemberPin(m));
   if (pinLabel) {
-    pinLabel.textContent = savedPin ? "PIN Number *" : "PIN Number (Optional — set a 4-digit PIN if you like)";
+    pinLabel.textContent = pinRequired ? "PIN Number *" : "PIN Number (Optional — set a 4-digit PIN if you like)";
   }
   if (pinInput) {
-    pinInput.required = Boolean(savedPin);
+    pinInput.required = pinRequired;
   }
   if (noteEl) {
-    noteEl.textContent = savedPin
+    noteEl.textContent = pinRequired
       ? `Profile found: ${m.FullName}. Enter your PIN to sign in.`
       : `Profile found: ${m.FullName}. No PIN set yet—sign in directly or enter a new PIN.`;
   }
@@ -542,25 +571,29 @@ async function submitLogin(e) {
   errorEl.textContent = "";
 
   try {
-    if (!savedPin && enteredPin) {
-      candidate.Pin = enteredPin;
-      fetch(CONFIG.APPS_SCRIPT_URL, {
-        method: "POST",
-        body: JSON.stringify({
-          action: "update",
-          MemberID: candidate.MemberID,
-          Pin: enteredPin
-        })
-      }).catch(() => {});
-    }
+    const res = await fetch(CONFIG.APPS_SCRIPT_URL, {
+      method: "POST",
+      body: JSON.stringify({
+        action: "profileLogin",
+        MemberID: candidate.MemberID,
+        Lookup: query,
+        ProfilePIN: enteredPin
+      })
+    });
+    const result = await res.json();
 
-    viewerId = candidate.MemberID;
-    localStorage.setItem("family_tree_me_id", viewerId);
-    document.getElementById("profile-overlay").style.display = "none";
-    renderViewerStatus();
-    renderTree();
-    generateDidYouKnow();
-    focusMember(viewerId, false);
+    if (result.status === "success") {
+      viewerId = result.memberId || candidate.MemberID;
+      localStorage.setItem("family_tree_me_id", viewerId);
+      document.getElementById("profile-overlay").style.display = "none";
+      await fetchMembers();
+      focusMember(viewerId, false);
+    } else {
+      errorEl.textContent = result.message || "Could not sign in.";
+    }
+  } catch (err) {
+    console.error(err);
+    errorEl.textContent = "Sign-in request failed. Please try again.";
   } finally {
     btn.disabled = false;
     btn.textContent = "Continue to Tree";
@@ -608,7 +641,8 @@ async function deleteMember(memberId, isSelfRemoval = false) {
       method: "POST",
       body: JSON.stringify({
         action: "delete",
-        MemberID: memberId
+        MemberID: memberId,
+        ActorMemberID: viewerId
       })
     });
     const result = await res.json();
@@ -661,6 +695,7 @@ function openProfile(memberId) {
   const hobbies = (m.Hobbies || "").split(",").map(s => s.trim()).filter(Boolean);
   const sports = (m.Sports || "").split(",").map(s => s.trim()).filter(Boolean);
   const isMe = m.MemberID === viewerId;
+  const cleanBirthDate = formatBirthDate(m.BirthDate);
 
   let html = `
     <button class="close-drawer" onclick="document.getElementById('profile-overlay').style.display='none'">×</button>
@@ -671,7 +706,7 @@ function openProfile(memberId) {
         ${m.Nickname ? `<div class="profile-sub">${m.Nickname}</div>` : ''}
         <div class="profile-meta">
           ${m.Occupation || ''}
-          ${m.BirthDate ? `<br/>🎂 ${m.BirthDate}` : ''}
+          ${cleanBirthDate ? `<br/>🎂 ${cleanBirthDate}` : ''}
           ${m.City ? `<br/>📍 ${m.City}` : ''}
         </div>
       </div>
@@ -840,7 +875,7 @@ function openEditForm(memberId) {
   document.getElementById("FullName").value = m.FullName || "";
   document.getElementById("Nickname").value = m.Nickname || "";
   document.getElementById("Gender").value = m.Gender || "Male";
-  document.getElementById("BirthDate").value = m.BirthDate || "";
+  document.getElementById("BirthDate").value = formatBirthDate(m.BirthDate);
   document.getElementById("Occupation").value = m.Occupation || "";
   document.getElementById("Hobbies").value = m.Hobbies || "";
   document.getElementById("Sports").value = m.Sports || "";
@@ -947,6 +982,7 @@ async function submitMember(e) {
     const payload = {
       action: isEdit ? "update" : "create",
       MemberID: editId,
+      ActorMemberID: viewerId,
       Role: isEdit && existingMember && existingMember.Role === "Root" ? "Root" : selectedRole,
       RelatedToID: isEdit && existingMember && existingMember.Role === "Root" ? "" : document.getElementById("RelatedToID").value,
       LineageBranch: lineageInput ? lineageInput.value : "",
@@ -954,7 +990,7 @@ async function submitMember(e) {
       FullName: document.getElementById("FullName").value.trim(),
       Nickname: document.getElementById("Nickname").value.trim(),
       Gender: document.getElementById("Gender").value,
-      BirthDate: document.getElementById("BirthDate").value,
+      BirthDate: formatBirthDate(document.getElementById("BirthDate").value),
       PhotoURL: photoUrl,
       Occupation: document.getElementById("Occupation").value.trim(),
       Hobbies: document.getElementById("Hobbies").value.trim(),
