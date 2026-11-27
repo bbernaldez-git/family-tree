@@ -2,7 +2,7 @@
 // 1. CONFIGURATION
 // ==========================================
 const CONFIG = {
-  APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbyT_spiceGv_Jd2pn4ld6bQIc4hOtCGcGZbELqno2GXoDlgs8H-ZhYIo_ELS7DzPQETJA/exec",
+  APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbzzjnGfl0RnXyax8oQdWbROQDVTfLP5ArxnKhayaYVjgN0o4j83E1BwKu-gwVQ-zeU4cg/exec",
   CLOUDINARY_CLOUD_NAME: "di1fg6nu",
   CLOUDINARY_UPLOAD_PRESET: "family_tree_unsigned",
   FAMILY_NAME: "Bernaldez Family Tree"
@@ -36,7 +36,8 @@ let adminPasscode = sessionStorage.getItem("family_tree_admin_code") || "";
 // 2. INITIALIZATION & DATA FETCHING
 // ==========================================
 window.addEventListener("DOMContentLoaded", async () => {
-  document.getElementById("header-title").textContent = CONFIG.FAMILY_NAME;
+  const titleEl = document.getElementById("header-title");
+  if (titleEl) titleEl.textContent = CONFIG.FAMILY_NAME;
   ensureAdminButtonExists();
   await fetchMembers();
 
@@ -122,7 +123,8 @@ async function fetchMembers() {
     console.error(err);
     alert("Could not load family tree. Check your Apps Script deployment.");
   } finally {
-    document.getElementById("loader").style.display = "none";
+    const loader = document.getElementById("loader");
+    if (loader) loader.style.display = "none";
   }
 }
 
@@ -191,6 +193,7 @@ function canEditMember(targetMember) {
 
 function renderTree() {
   const container = document.getElementById("tree-root");
+  if (!container) return;
   if (!allMembers.length) {
     container.innerHTML = "<p style='padding:40px; color:var(--muted);'>No members yet. Tap '+ Join Tree' to start!</p>";
     return;
@@ -273,7 +276,7 @@ function buildCardHTML(m, birthOrderInfo) {
 function generateDidYouKnow() {
   const banner = document.getElementById("dyk-banner");
   const textEl = document.getElementById("dyk-text");
-  if (allMembers.length < 2) return;
+  if (!banner || !textEl || allMembers.length < 2) return;
 
   const me = allMembers.find(m => m.MemberID === viewerId);
   const facts = [];
@@ -332,4 +335,614 @@ function getParentIds(memberId) {
     const directParent = allMembers.find(x => x.MemberID === m.RelatedToID);
     if (!directParent) return [];
     const spouses = allMembers
-      .filter(x => x.Role === "Spouse" && x.
+      .filter(x => x.Role === "Spouse" && x.RelatedToID === directParent.MemberID)
+      .map(x => x.MemberID);
+    return [directParent.MemberID, ...spouses];
+  }
+  if (m.Role === "Spouse") {
+    const partner = allMembers.find(x => x.MemberID === m.RelatedToID);
+    return partner ? getParentIds(partner.MemberID) : [];
+  }
+  return [];
+}
+
+function getRelationshipLabel(me, other) {
+  if (!me || !other) return "relative";
+  if (other.MemberID === MOTHER_MEMBER_ID) return "Mom";
+
+  const myParents = getParentIds(me.MemberID);
+  const otherParents = getParentIds(other.MemberID);
+
+  if (myParents.includes(other.MemberID)) {
+    return other.MemberID === MOTHER_MEMBER_ID || other.Gender === "Female" ? "Mom" : "Dad";
+  }
+  if (otherParents.includes(me.MemberID)) {
+    return other.Gender === "Female" ? "Daughter" : "Son";
+  }
+  if (myParents.some(pid => otherParents.includes(pid))) {
+    return other.Gender === "Female" ? "Sister" : "Brother";
+  }
+
+  const myGrandparents = myParents.flatMap(pid => getParentIds(pid));
+  const otherGrandparents = otherParents.flatMap(pid => getParentIds(pid));
+
+  if (otherParents.some(pid => myGrandparents.includes(pid))) {
+    return other.Gender === "Female" ? "Tita / Aunt" : "Tito / Uncle";
+  }
+  if (myGrandparents.some(gid => otherGrandparents.includes(gid))) {
+    return "Cousin";
+  }
+  return "relative";
+}
+
+// ==========================================
+// 5. PROFILE DRAWER & NAVIGATION
+// ==========================================
+function focusMember(memberId) {
+  const node = document.getElementById(`node-${memberId}`);
+  if (node) {
+    document.querySelectorAll(".member-card").forEach(c => c.classList.remove("highlighted"));
+    node.classList.add("highlighted");
+    node.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+  }
+  openProfile(memberId);
+}
+
+function openProfile(memberId) {
+  const m = allMembers.find(x => x.MemberID === memberId);
+  if (!m) return;
+
+  const initials = getInitials(m.FullName);
+  const avatar = m.PhotoURL
+    ? `<img src="${m.PhotoURL}" class="profile-avatar" alt="${m.FullName}" />`
+    : `<div class="profile-avatar">${initials}</div>`;
+
+  let socials = {};
+  try { socials = JSON.parse(m.Socials || "{}"); } catch (e) {}
+
+  const hobbies = (m.Hobbies || "").split(",").map(s => s.trim()).filter(Boolean);
+  const sports = (m.Sports || "").split(",").map(s => s.trim()).filter(Boolean);
+  const isMe = m.MemberID === viewerId;
+  const editable = canEditMember(m);
+  const memberBranch = resolveMemberBranch(m);
+
+  let html = `
+    <button class="close-drawer" onclick="document.getElementById('profile-overlay').style.display='none'">×</button>
+    <div class="profile-header">
+      ${avatar}
+      <div class="profile-title">
+        <h2>${m.FullName}</h2>
+        ${m.Nickname ? `<div class="profile-sub">${m.Nickname}</div>` : ''}
+        <div class="profile-meta">
+          ${m.Occupation || ''}
+          ${m.BirthDate ? `<br/>🎂 ${m.BirthDate}` : ''}
+          ${m.City ? `<br/>📍 ${m.City}` : ''}
+          ${memberBranch ? `<br/>🌿 Second Line: ${memberBranch}` : ''}
+        </div>
+      </div>
+    </div>
+
+    <div class="action-row">
+      ${m.Phone ? `<a href="tel:${m.Phone}" class="action-pill">📞 Call</a><a href="sms:${m.Phone}" class="action-pill">💬 SMS</a>` : ''}
+      ${m.Email ? `<a href="mailto:${m.Email}" class="action-pill">✉️ Email</a>` : ''}
+      ${editable
+        ? `<button class="action-pill" onclick="openEditForm('${m.MemberID}')">✏️ Edit Profile</button>`
+        : `<span class="action-pill" style="opacity:0.65; cursor:not-allowed;">🔒 View Only</span>`
+      }
+      <button class="action-pill" style="background:${isMe ? 'var(--accent-bg)' : 'var(--primary-light)'}; color:var(--primary);" onclick="setAsMe('${m.MemberID}')">
+        ${isMe ? '★ Viewing as You' : '👤 This is me'}
+      </button>
+    </div>
+  `;
+
+  if (hobbies.length) {
+    html += `<div class="section-label">Hobbies</div><div class="tag-list">${hobbies.map(h => `<span class="tag">${h}</span>`).join("")}</div>`;
+  }
+  if (sports.length) {
+    html += `<div class="section-label">Sports</div><div class="tag-list">${sports.map(s => `<span class="tag">${s}</span>`).join("")}</div>`;
+  }
+  if (socials.fb || socials.ig) {
+    html += `<div class="section-label">Social Profiles</div><div class="action-row">`;
+    if (socials.fb) {
+      const fbUrl = socials.fb.startsWith("http") ? socials.fb : `https://facebook.com/${socials.fb.replace(/^@/, "")}`;
+      html += `<a href="${fbUrl}" target="_blank" class="action-pill">Facebook: ${socials.fb}</a>`;
+    }
+    if (socials.ig) {
+      const igUrl = socials.ig.startsWith("http") ? socials.ig : `https://instagram.com/${socials.ig.replace(/^@/, "")}`;
+      html += `<a href="${igUrl}" target="_blank" class="action-pill">Instagram: ${socials.ig}</a>`;
+    }
+    html += `</div>`;
+  }
+
+  document.getElementById("profile-drawer-content").innerHTML = html;
+  document.getElementById("profile-overlay").style.display = "flex";
+}
+
+function setAsMe(memberId) {
+  viewerId = memberId;
+  localStorage.setItem("family_tree_me_id", memberId);
+  const picked = allMembers.find(x => x.MemberID === memberId);
+  if (picked) {
+    viewerBranch = resolveMemberBranch(picked);
+    localStorage.setItem("family_tree_branch", viewerBranch);
+  }
+  renderTree();
+  generateDidYouKnow();
+  openProfile(memberId);
+}
+
+// ==========================================
+// 6. ADD & EDIT FORM + CLOUDINARY UPLOAD
+// ==========================================
+function populateLineageBranchSelect(selectedValue = "") {
+  const select = document.getElementById("LineageBranch");
+  if (!select) return;
+  select.innerHTML =
+    `<option value="">-- Select your 2nd line (Grandfather / Grandmother) --</option>` +
+    LINEAGE_BRANCHES.map(name => `<option value="${name}">${name}</option>`).join("");
+  if (selectedValue) {
+    select.value = selectedValue;
+  }
+}
+
+function onLineageBranchChange() {
+  const branchEl = document.getElementById("LineageBranch");
+  if (!branchEl || !branchEl.value) return;
+
+  const firstWord = branchEl.value.split(" ")[0].toLowerCase();
+  const matchedMember = allMembers.find(m =>
+    m.FullName.toLowerCase() === branchEl.value.toLowerCase() ||
+    m.FullName.toLowerCase().includes(firstWord) ||
+    (m.Nickname || "").toLowerCase().includes(firstWord)
+  );
+
+  if (matchedMember) {
+    const relSelect = document.getElementById("RelatedToID");
+    if (!Array.from(relSelect.options).some(opt => opt.value === matchedMember.MemberID)) {
+      const opt = document.createElement("option");
+      opt.value = matchedMember.MemberID;
+      opt.textContent = `${matchedMember.FullName}${matchedMember.Nickname ? ` (${matchedMember.Nickname})` : ""}`;
+      relSelect.prepend(opt);
+    }
+    relSelect.value = matchedMember.MemberID;
+  }
+}
+
+function openJoinForm(fromQr = false) {
+  document.getElementById("join-form").reset();
+  document.getElementById("EditMemberID").value = "";
+  document.getElementById("form-heading").textContent = fromQr
+    ? "Join via 2nd Line (Grandparent)"
+    : "Join the Family Tree";
+  document.getElementById("form-sub").textContent = fromQr
+    ? "Choose your grandfather or grandmother's line to join and manage your own profile."
+    : "Add your profile to view the tree and edit your own details.";
+  document.getElementById("photo-label").textContent = "Profile Photo";
+  document.getElementById("submit-btn").textContent = "✓ Save to Family Tree";
+  document.getElementById("role-toggle-wrap").style.display = "grid";
+  document.getElementById("relation-group").style.display = "block";
+  document.getElementById("RelatedToID").required = true;
+
+  const passkeyGroup = document.getElementById("passkey-group");
+  const passkeyInput = document.getElementById("FamilyPasscode");
+  if (passkeyGroup) passkeyGroup.style.display = "block";
+  if (passkeyInput) passkeyInput.required = true;
+
+  populateLineageBranchSelect("");
+  setRole("Descendant");
+  filterRelativeDropdown("");
+  document.getElementById("form-overlay").style.display = "flex";
+}
+
+function openEditForm(memberId) {
+  const m = allMembers.find(x => x.MemberID === memberId);
+  if (!m) return;
+
+  if (!canEditMember(m)) {
+    alert("You can only edit your own profile. Use Admin Login for full control.");
+    return;
+  }
+
+  document.getElementById("profile-overlay").style.display = "none";
+  document.getElementById("join-form").reset();
+
+  document.getElementById("EditMemberID").value = m.MemberID;
+  document.getElementById("form-heading").textContent = `Edit Profile: ${m.FullName}`;
+  document.getElementById("form-sub").textContent = "Update your details, birthdate, or profile photo.";
+  document.getElementById("photo-label").textContent = "Change Photo (Optional)";
+  document.getElementById("submit-btn").textContent = "✓ Save Changes";
+
+  const passkeyGroup = document.getElementById("passkey-group");
+  const passkeyInput = document.getElementById("FamilyPasscode");
+  if (passkeyGroup) passkeyGroup.style.display = "none";
+  if (passkeyInput) passkeyInput.required = false;
+
+  populateLineageBranchSelect(resolveMemberBranch(m));
+
+  if (m.Role === "Root") {
+    document.getElementById("role-toggle-wrap").style.display = "none";
+    document.getElementById("relation-group").style.display = "none";
+    document.getElementById("RelatedToID").required = false;
+  } else {
+    document.getElementById("role-toggle-wrap").style.display = "grid";
+    document.getElementById("relation-group").style.display = "block";
+    document.getElementById("RelatedToID").required = true;
+    setRole(m.Role || "Descendant");
+    filterRelativeDropdown("", m.MemberID);
+    document.getElementById("RelatedToID").value = m.RelatedToID;
+  }
+
+  document.getElementById("FullName").value = m.FullName || "";
+  document.getElementById("Nickname").value = m.Nickname || "";
+  document.getElementById("Gender").value = m.Gender || "Male";
+  document.getElementById("BirthDate").value = toDateInputValue(m.BirthDate);
+  document.getElementById("Occupation").value = m.Occupation || "";
+  document.getElementById("Hobbies").value = m.Hobbies || "";
+  document.getElementById("Sports").value = m.Sports || "";
+  document.getElementById("Phone").value = m.Phone || "";
+  document.getElementById("City").value = m.City || "";
+  document.getElementById("Email").value = m.Email || "";
+
+  let socials = {};
+  try { socials = JSON.parse(m.Socials || "{}"); } catch (e) {}
+  document.getElementById("SocialFB").value = socials.fb || "";
+  document.getElementById("SocialIG").value = socials.ig || "";
+
+  document.getElementById("form-overlay").style.display = "flex";
+}
+
+function setRole(role) {
+  selectedRole = role;
+  document.getElementById("btn-role-child").classList.toggle("active", role === "Descendant");
+  document.getElementById("btn-role-spouse").classList.toggle("active", role === "Spouse");
+  document.getElementById("relation-label").textContent =
+    role === "Descendant"
+      ? "Who is your Parent / Grandparent link in this family? *"
+      : "Who is your Spouse / Partner in this family? *";
+}
+
+function filterRelativeDropdown(query, excludeId = "") {
+  const select = document.getElementById("RelatedToID");
+  const currentVal = select.value;
+  const q = query.toLowerCase();
+  const filtered = allMembers.filter(m =>
+    m.MemberID !== excludeId &&
+    (m.FullName.toLowerCase().includes(q) || (m.Nickname || "").toLowerCase().includes(q))
+  );
+  select.innerHTML = filtered.map(m =>
+    `<option value="${m.MemberID}">${m.FullName} ${m.Nickname ? `(${m.Nickname})` : ''}</option>`
+  ).join("");
+  if (currentVal && filtered.some(m => m.MemberID === currentVal)) {
+    select.value = currentVal;
+  }
+}
+
+function populateFormHelpers() {
+  const collectUnique = (field) => {
+    const set = new Set();
+    allMembers.forEach(m => (m[field] || "").split(",").forEach(v => { if (v.trim()) set.add(v.trim()); }));
+    return Array.from(set).slice(0, 8);
+  };
+
+  const renderChips = (elId, inputId, items) => {
+    const el = document.getElementById(elId);
+    if (!el) return;
+    el.innerHTML = items.map(item =>
+      `<button type="button" class="chip-btn" onclick="appendTag('${inputId}', '${item.replace(/'/g, "\\'")}')">+ ${item}</button>`
+    ).join("");
+  };
+
+  renderChips("hobby-chips", "Hobbies", collectUnique("Hobbies"));
+  renderChips("sport-chips", "Sports", collectUnique("Sports"));
+}
+
+function appendTag(inputId, val) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  const existing = input.value.split(",").map(s => s.trim()).filter(Boolean);
+  if (!existing.some(e => e.toLowerCase() === val.toLowerCase())) {
+    existing.push(val);
+    input.value = existing.join(", ");
+  }
+}
+
+async function uploadToCloudinary(file) {
+  if (!file || CONFIG.CLOUDINARY_CLOUD_NAME === "YOUR_CLOUDINARY_CLOUD_NAME") return "";
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("upload_preset", CONFIG.CLOUDINARY_UPLOAD_PRESET);
+
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${CONFIG.CLOUDINARY_CLOUD_NAME}/image/upload`, {
+    method: "POST",
+    body: formData
+  });
+  const data = await res.json();
+  if (!res.ok || !data.secure_url) {
+    throw new Error(data.error?.message || "Cloudinary upload failed");
+  }
+  return data.secure_url;
+}
+
+async function submitMember(e) {
+  e.preventDefault();
+  const btn = document.getElementById("submit-btn");
+  const editId = document.getElementById("EditMemberID").value;
+  const isEdit = Boolean(editId);
+
+  btn.disabled = true;
+  btn.textContent = isEdit ? "Updating..." : "Saving...";
+
+  try {
+    const existingMember = isEdit ? allMembers.find(x => x.MemberID === editId) : null;
+    if (isEdit && existingMember && !canEditMember(existingMember)) {
+      throw new Error("You can only edit your own profile. Use Admin Login for full control.");
+    }
+
+    const fileInput = document.getElementById("PhotoFile");
+    const hasNewFile = Boolean(fileInput && fileInput.files && fileInput.files[0]);
+
+    const photoUrl = hasNewFile
+      ? await uploadToCloudinary(fileInput.files[0])
+      : (existingMember ? existingMember.PhotoURL : "");
+
+    const birthDateInput = document.getElementById("BirthDate").value.trim();
+    const birthDateVal = birthDateInput || (existingMember ? existingMember.BirthDate : "");
+
+    const selectedBranch = document.getElementById("LineageBranch")
+      ? document.getElementById("LineageBranch").value.trim()
+      : "";
+    const resolvedBranch = selectedBranch || (existingMember ? resolveMemberBranch(existingMember) : "");
+
+    const familyPasscode = document.getElementById("FamilyPasscode")
+      ? document.getElementById("FamilyPasscode").value.trim()
+      : "";
+
+    const payload = {
+      action: isEdit ? "update" : "create",
+      MemberID: editId,
+      ActorMemberID: viewerId,
+      AdminPasscode: adminPasscode,
+      Role: isEdit && existingMember && existingMember.Role === "Root" ? "Root" : selectedRole,
+      RelatedToID: isEdit && existingMember && existingMember.Role === "Root" ? "" : document.getElementById("RelatedToID").value,
+      FullName: document.getElementById("FullName").value.trim(),
+      Nickname: document.getElementById("Nickname").value.trim(),
+      Gender: document.getElementById("Gender").value,
+      BirthDate: birthDateVal,
+      PhotoURL: photoUrl,
+      Occupation: document.getElementById("Occupation").value.trim(),
+      Hobbies: document.getElementById("Hobbies").value.trim(),
+      Sports: document.getElementById("Sports").value.trim(),
+      Phone: document.getElementById("Phone").value.trim(),
+      Email: document.getElementById("Email").value.trim(),
+      City: document.getElementById("City").value.trim(),
+      Socials: {
+        fb: document.getElementById("SocialFB").value.trim(),
+        ig: document.getElementById("SocialIG").value.trim()
+      },
+      LineageBranch: resolvedBranch,
+      FamilyPasscode: familyPasscode
+    };
+
+    const res = await fetch(CONFIG.APPS_SCRIPT_URL, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+    const result = await res.json();
+
+    if (result.status === "success") {
+      if (!isEdit) {
+        viewerId = result.memberId;
+        localStorage.setItem("family_tree_me_id", viewerId);
+        if (resolvedBranch) {
+          viewerBranch = resolvedBranch;
+          localStorage.setItem("family_tree_branch", viewerBranch);
+        }
+      }
+      document.getElementById("join-form").reset();
+      document.getElementById("form-overlay").style.display = "none";
+      await fetchMembers();
+      focusMember(result.memberId);
+    } else {
+      alert("Error: " + result.message);
+    }
+  } catch (err) {
+    console.error(err);
+    alert("Submission failed: " + (err.message || "Please try again."));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = isEdit ? "✓ Save Changes" : "✓ Save to Family Tree";
+  }
+}
+
+// ==========================================
+// 7. SEARCH, MOBILE ZOOM & QR MODAL
+// ==========================================
+function handleSearch(query) {
+  const box = document.getElementById("search-results");
+  if (!box) return;
+  const q = query.trim().toLowerCase();
+  if (!q) {
+    box.style.display = "none";
+    return;
+  }
+
+  const matches = allMembers.filter(m =>
+    [m.FullName, m.Nickname, m.Occupation, m.Hobbies, m.Sports, m.City]
+      .some(field => (field || "").toLowerCase().includes(q))
+  );
+
+  box.innerHTML = matches.length
+    ? matches.map(m => `<div class="search-item" onclick="selectSearch('${m.MemberID}')"><strong>${m.FullName}</strong> ${m.Nickname ? `(${m.Nickname})` : ''} <span style="color:var(--muted); font-size:0.75rem;">${m.Occupation || ''}</span></div>`).join("")
+    : `<div class="search-item" style="color:var(--muted);">No matches found</div>`;
+  box.style.display = "block";
+}
+
+function selectSearch(id) {
+  const box = document.getElementById("search-results");
+  const input = document.getElementById("search-input");
+  if (box) box.style.display = "none";
+  if (input) input.value = "";
+  focusMember(id);
+}
+
+function syncScaledBounds() {
+  const viewport = document.querySelector(".tree-viewport");
+  const canvas = document.getElementById("tree-canvas");
+  if (!viewport || !canvas) return;
+
+  const prevTransform = canvas.style.transform;
+  canvas.style.transform = "none";
+  const naturalWidth = canvas.offsetWidth;
+  const naturalHeight = canvas.offsetHeight;
+  canvas.style.transform = prevTransform;
+
+  const scaledWidth = naturalWidth * currentZoom;
+  const scaledHeight = naturalHeight * currentZoom;
+
+  const horizontalOffset = Math.min(0, (scaledWidth - naturalWidth) / 2);
+  const verticalOffset = Math.min(0, scaledHeight - naturalHeight);
+
+  canvas.style.marginLeft = `${horizontalOffset}px`;
+  canvas.style.marginRight = `${horizontalOffset}px`;
+  canvas.style.marginBottom = `${verticalOffset}px`;
+}
+
+function applyZoom(nextZoom, fromUser = true) {
+  if (fromUser) hasUserAdjustedZoom = true;
+  currentZoom = Math.min(Math.max(MIN_ZOOM, Number(nextZoom.toFixed(2))), MAX_ZOOM);
+  const canvas = document.getElementById("tree-canvas");
+  if (canvas) {
+    canvas.style.transform = `scale(${currentZoom})`;
+    syncScaledBounds();
+  }
+}
+
+function adjustZoom(delta) {
+  applyZoom(currentZoom + delta, true);
+}
+
+function resetZoom() {
+  hasUserAdjustedZoom = false;
+  applyZoom(1, false);
+}
+
+function autoFitTreeToViewport() {
+  if (hasUserAdjustedZoom) return;
+  const viewport = document.querySelector(".tree-viewport");
+  const canvas = document.getElementById("tree-canvas");
+  if (!viewport || !canvas) return;
+
+  if (window.innerWidth > 768) {
+    applyZoom(1, false);
+    return;
+  }
+
+  canvas.style.transform = "none";
+  canvas.style.marginLeft = "0px";
+  canvas.style.marginRight = "0px";
+  canvas.style.marginBottom = "0px";
+
+  const availableWidth = viewport.clientWidth - 24;
+  const treeWidth = canvas.scrollWidth || canvas.offsetWidth;
+
+  if (treeWidth > 0 && availableWidth > 0 && treeWidth > availableWidth) {
+    const fitScale = Math.max(MIN_ZOOM, Math.min(1, availableWidth / treeWidth));
+    applyZoom(fitScale, false);
+  } else {
+    applyZoom(1, false);
+  }
+}
+
+(function enablePinchZoom() {
+  let pinchStartDist = 0;
+  let pinchStartZoom = 1;
+
+  document.addEventListener("DOMContentLoaded", () => {
+    const viewport = document.querySelector(".tree-viewport");
+    if (!viewport) return;
+
+    const getDistance = (t1, t2) =>
+      Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+
+    viewport.addEventListener("touchstart", (e) => {
+      if (e.touches.length === 2) {
+        pinchStartDist = getDistance(e.touches[0], e.touches[1]);
+        pinchStartZoom = currentZoom;
+      }
+    }, { passive: true });
+
+    viewport.addEventListener("touchmove", (e) => {
+      if (e.touches.length === 2 && pinchStartDist > 0) {
+        const currentDist = getDistance(e.touches[0], e.touches[1]);
+        applyZoom(pinchStartZoom * (currentDist / pinchStartDist), true);
+      }
+    }, { passive: true });
+
+    viewport.addEventListener("touchend", (e) => {
+      if (e.touches.length < 2) {
+        pinchStartDist = 0;
+      }
+    }, { passive: true });
+
+    window.addEventListener("resize", () => {
+      if (!hasUserAdjustedZoom) {
+        autoFitTreeToViewport();
+      } else {
+        syncScaledBounds();
+      }
+    });
+  });
+})();
+
+function openQrModal() {
+  const qrBox = document.getElementById("qrcode-box");
+  if (!qrBox || typeof QRCode === "undefined") return;
+  qrBox.innerHTML = "";
+  const joinUrl = `${window.location.origin}${window.location.pathname}?action=join`;
+  new QRCode(qrBox, { text: joinUrl, width: 200, height: 200, colorDark: "#2f5233", colorLight: "#ffffff" });
+  const qrOverlay = document.getElementById("qr-overlay");
+  if (qrOverlay) qrOverlay.style.display = "flex";
+}
+
+function closeOverlay(e, id) {
+  if (e.target.id === id) document.getElementById(id).style.display = "none";
+}
+
+// ==========================================
+// 8. HIDE SEARCH BAR ON SCROLL UP, SHOW ON SCROLL DOWN
+// ==========================================
+(function initSearchScrollBehavior() {
+  document.addEventListener("DOMContentLoaded", () => {
+    const searchWrap = document.querySelector(".search-wrap");
+    const searchInput = document.getElementById("search-input");
+    const viewport = document.querySelector(".tree-viewport");
+    if (!searchWrap || !viewport) return;
+
+    let lastScrollTop = 0;
+
+    const handleVerticalMove = (currentScrollTop) => {
+      if (document.activeElement === searchInput || (searchInput && searchInput.value.trim() !== "")) {
+        searchWrap.classList.remove("search-hidden");
+        return;
+      }
+
+      if (currentScrollTop <= 10) {
+        searchWrap.classList.remove("search-hidden");
+      } else if (currentScrollTop < lastScrollTop - 6) {
+        searchWrap.classList.add("search-hidden");
+      } else if (currentScrollTop > lastScrollTop + 6) {
+        searchWrap.classList.remove("search-hidden");
+      }
+
+      lastScrollTop = Math.max(0, currentScrollTop);
+    };
+
+    viewport.addEventListener("scroll", () => {
+      handleVerticalMove(viewport.scrollTop);
+    }, { passive: true });
+
+    window.addEventListener("scroll", () => {
+      handleVerticalMove(window.scrollY);
+    }, { passive: true });
+  });
+})();
