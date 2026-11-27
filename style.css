@@ -11,6 +11,19 @@
   --shadow: 0 6px 20px rgba(31, 41, 35, 0.08);
 }
 
+[data-theme="dark"] {
+  --bg: #121714;
+  --surface: #1b231e;
+  --ink: #edf2ee;
+  --muted: #9fb0a5;
+  --primary: #5ea367;
+  --primary-light: #233327;
+  --accent: #d49e38;
+  --accent-bg: #2c2414;
+  --border: #2d3b32;
+  --shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -23,6 +36,7 @@ body {
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 /* Top Bar */
@@ -101,6 +115,10 @@ button {
   font-size: 0.92rem;
 }
 
+[data-theme="dark"] .dyk-banner {
+  border-color: #5c4922;
+}
+
 .dyk-link {
   color: var(--primary);
   font-weight: 600;
@@ -119,6 +137,12 @@ button {
   border: 1px solid #dec794;
   border-radius: 6px;
   padding: 2px 8px;
+}
+
+[data-theme="dark"] .dyk-controls button {
+  background: var(--surface);
+  color: var(--ink);
+  border-color: #5c4922;
 }
 
 /* Search */
@@ -144,6 +168,7 @@ button {
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--surface);
+  color: var(--ink);
   font: inherit;
 }
 
@@ -163,7 +188,7 @@ button {
 
 .search-item {
   padding: 10px 14px;
-  border-bottom: 1px solid #eef2ee;
+  border-bottom: 1px solid var(--border);
   cursor: pointer;
 }
 
@@ -221,6 +246,10 @@ button {
   height: 28px;
 }
 
+[data-theme="dark"] .tree-root ul::before {
+  border-left-color: #3a4d40;
+}
+
 .tree-root > ul::before {
   display: none;
 }
@@ -245,6 +274,11 @@ button {
   border-top: 2px solid #b9c7ba;
 }
 
+[data-theme="dark"] .tree-root ul ul li::before,
+[data-theme="dark"] .tree-root ul ul li::after {
+  border-top-color: #3a4d40;
+}
+
 .tree-root ul ul li::before {
   right: 50%;
 }
@@ -252,6 +286,10 @@ button {
 .tree-root ul ul li::after {
   left: 50%;
   border-left: 2px solid #b9c7ba;
+}
+
+[data-theme="dark"] .tree-root ul ul li::after {
+  border-left-color: #3a4d40;
 }
 
 .tree-root ul ul li:only-child::before,
@@ -312,6 +350,10 @@ button {
 .member-card.is-me {
   border-color: var(--primary);
   background: #f9fcf9;
+}
+
+[data-theme="dark"] .member-card.is-me {
+  background: #1f2e23;
 }
 
 .avatar {
@@ -387,6 +429,7 @@ button {
   height: 36px;
   border-radius: 8px;
   background: var(--surface);
+  color: var(--ink);
   border: 1px solid var(--border);
   font-weight: 700;
   font-size: 0.82rem;
@@ -397,7 +440,7 @@ button {
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(20, 28, 22, 0.45);
+  background: rgba(20, 28, 22, 0.55);
   z-index: 50;
   align-items: center;
   justify-content: center;
@@ -407,6 +450,7 @@ button {
 .drawer-card,
 .modal-card {
   background: var(--surface);
+  color: var(--ink);
   border-radius: 16px;
   width: 100%;
   max-width: 520px;
@@ -422,12 +466,17 @@ button {
   top: 14px;
   right: 14px;
   background: #f0f3f0;
+  color: var(--ink);
   border: none;
   border-radius: 50%;
   width: 32px;
   height: 32px;
   font-size: 1.1rem;
   line-height: 1;
+}
+
+[data-theme="dark"] .close-drawer {
+  background: #26322a;
 }
 
 .profile-header {
@@ -513,6 +562,10 @@ button {
   font-size: 0.82rem;
 }
 
+[data-theme="dark"] .tag {
+  background: #243028;
+}
+
 .modal-sub {
   color: var(--muted);
   font-size: 0.9rem;
@@ -538,6 +591,12 @@ button {
   border-radius: 8px;
   font: inherit;
   background: #ffffff;
+  color: var(--ink);
+}
+
+[data-theme="dark"] .form-group input,
+[data-theme="dark"] .form-group select {
+  background: #141a16;
 }
 
 .form-row {
@@ -558,8 +617,13 @@ button {
   border-radius: 8px;
   border: 1px solid var(--border);
   background: #f8faf8;
+  color: var(--ink);
   font-weight: 600;
   font-size: 0.86rem;
+}
+
+[data-theme="dark"] .role-btn {
+  background: #141a16;
 }
 
 .role-btn.active {
