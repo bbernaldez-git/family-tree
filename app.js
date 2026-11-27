@@ -8,6 +8,8 @@ const CONFIG = {
   FAMILY_NAME: "Bernaldez Family Tree"
 };
 
+const THEME_STORAGE_KEY = "family_tree_theme";
+
 let allMembers = [];
 let selectedRole = "Descendant";
 let currentZoom = 1;
@@ -15,8 +17,34 @@ let viewerId = localStorage.getItem("family_tree_me_id") || "";
 let selectedLoginMemberId = "";
 
 // ==========================================
-// 2. DATE FORMATTING & INITIALIZATION
+// 2. THEME, DATE FORMATTING & INITIALIZATION
 // ==========================================
+function getPreferredTheme() {
+  const saved = localStorage.getItem(THEME_STORAGE_KEY);
+  if (saved === "light" || saved === "dark") return saved;
+  return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
+    ? "dark"
+    : "light";
+}
+
+function applyTheme(theme) {
+  const mode = theme === "dark" ? "dark" : "light";
+  document.documentElement.setAttribute("data-theme", mode);
+  const btn = document.getElementById("theme-toggle-btn");
+  if (btn) {
+    btn.textContent = mode === "dark" ? "☀️" : "🌙";
+    btn.title = mode === "dark" ? "Switch to light mode" : "Switch to dark mode";
+    btn.setAttribute("aria-label", btn.title);
+  }
+}
+
+function toggleTheme() {
+  const current = document.documentElement.getAttribute("data-theme") || getPreferredTheme();
+  const next = current === "dark" ? "light" : "dark";
+  localStorage.setItem(THEME_STORAGE_KEY, next);
+  applyTheme(next);
+}
+
 function formatBirthDate(dateStr) {
   if (!dateStr) return "";
   const raw = String(dateStr).trim();
@@ -43,6 +71,7 @@ function formatBirthDate(dateStr) {
 }
 
 window.addEventListener("DOMContentLoaded", async () => {
+  applyTheme(getPreferredTheme());
   const titleEl = document.getElementById("header-title");
   if (titleEl) titleEl.textContent = CONFIG.FAMILY_NAME;
   await fetchMembers();
@@ -347,11 +376,11 @@ function renderViewerStatus() {
     const label = me.Nickname || me.FullName;
     bar.innerHTML = `
       <span><strong>${label}</strong></span>
-      <button type="button" onclick="logoutViewer()" style="background:#ffffff;color:var(--ink);border:1px solid var(--border);border-radius:999px;padding:2px 7px;font-size:0.72rem;font-weight:600;">Logout</button>
+      <button type="button" onclick="logoutViewer()" style="background:var(--surface);color:var(--ink);border:1px solid var(--border);border-radius:999px;padding:2px 7px;font-size:0.72rem;font-weight:600;">Logout</button>
     `;
   } else {
     bar.innerHTML = `
-      <button type="button" onclick="openLoginModal()" style="background:#ffffff;color:var(--primary);border:1px solid var(--border);border-radius:999px;padding:2px 8px;font-size:0.74rem;font-weight:600;">👤 Login</button>
+      <button type="button" onclick="openLoginModal()" style="background:var(--surface);color:var(--primary);border:1px solid var(--border);border-radius:999px;padding:2px 8px;font-size:0.74rem;font-weight:600;">👤 Login</button>
     `;
   }
 }
@@ -395,7 +424,7 @@ function openLoginModal(prefillMember = null) {
           autocomplete="off"
           oninput="onLoginLookupInput(this.value)"
         />
-        <div id="login-match-box" style="display:none;border:1px solid var(--border);border-radius:8px;background:#fff;margin-top:4px;max-height:160px;overflow-y:auto;"></div>
+        <div id="login-match-box" style="display:none;border:1px solid var(--border);border-radius:8px;background:var(--surface);margin-top:4px;max-height:160px;overflow-y:auto;"></div>
       </div>
 
       <div class="form-group">
@@ -414,7 +443,7 @@ function openLoginModal(prefillMember = null) {
       <div id="login-status-note" style="color:var(--muted);font-size:0.8rem;margin-bottom:8px;min-height:16px;">
         ${prefillMember ? (pinRequired ? "PIN required for this profile." : "No PIN set yet—sign in directly or set a 4-digit PIN.") : ""}
       </div>
-      <div id="login-error" style="color:#b91c1c;font-size:0.82rem;margin-bottom:8px;min-height:18px;"></div>
+      <div id="login-error" style="color:#dc2626;font-size:0.82rem;margin-bottom:8px;min-height:18px;"></div>
       <button type="submit" id="login-submit-btn" class="btn-primary full-width">Continue to Tree</button>
     </form>
   `;
@@ -468,7 +497,7 @@ function onLoginLookupInput(val) {
     return `
       <button
         type="button"
-        style="display:flex;justify-content:space-between;align-items:center;width:100%;text-align:left;background:#fff;border:none;border-bottom:1px solid #eef2ee;padding:8px 10px;font-size:0.84rem;"
+        style="display:flex;justify-content:space-between;align-items:center;width:100%;text-align:left;background:var(--surface);color:var(--ink);border:none;border-bottom:1px solid var(--border);padding:8px 10px;font-size:0.84rem;"
         onclick="selectLoginCandidate('${m.MemberID}', true)"
       >
         <span><strong>${m.FullName}</strong>${sub ? ` <span style="color:var(--muted);">(${sub})</span>` : ""}</span>
