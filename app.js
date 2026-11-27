@@ -2,7 +2,7 @@
 // 1. CONFIGURATION
 // ==========================================
 const CONFIG = {
-  APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycby8PGeCBC9JQLAX1Gh0fqOv5NSWd_oBHZ9fojJERZ0vp-4oFKUYHlmWDSfuuV_9a0YNgg/exec",
+  APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbzgeK3LlGMQzLAnl4VpqpP-LyTKHojurzfKm9eSOFj4VHPnZDUPVpKOSlilOuQrV4Ew9g/exec",
   CLOUDINARY_CLOUD_NAME: "di1fg6nu",
   CLOUDINARY_UPLOAD_PRESET: "family_tree_unsigned",
   FAMILY_NAME: "Bernaldez Family Tree"
@@ -290,7 +290,7 @@ function getRelationshipLabel(me, other) {
 }
 
 // ==========================================
-// 5. PROFILE DRAWER, LOOKUP+PIN LOGIN & LOGOUT
+// 5. PROFILE DRAWER, LOOKUP+PIN LOGIN & DELETE
 // ==========================================
 function renderViewerStatus() {
   const me = allMembers.find(m => m.MemberID === viewerId);
@@ -542,7 +542,6 @@ async function submitLogin(e) {
   errorEl.textContent = "";
 
   try {
-    // If user didn't have a PIN saved yet and typed a new PIN, save it if backend supports update
     if (!savedPin && enteredPin) {
       candidate.Pin = enteredPin;
       fetch(CONFIG.APPS_SCRIPT_URL, {
@@ -576,6 +575,63 @@ function logoutViewer() {
   renderViewerStatus();
   renderTree();
   generateDidYouKnow();
+}
+
+async function deleteMember(memberId, isSelfRemoval = false) {
+  const target = allMembers.find(m => m.MemberID === memberId);
+  if (!target) return;
+
+  if (isSelfRemoval && target.MemberID !== viewerId) {
+    alert("You can only remove your own signed-in profile.");
+    return;
+  }
+
+  const linkedRelatives = allMembers.filter(m => m.RelatedToID === memberId);
+  if (linkedRelatives.length > 0) {
+    const names = linkedRelatives.map(r => r.Nickname || r.FullName).join(", ");
+    alert(
+      `Cannot remove ${target.FullName} while other members (${names}) are linked to this profile. Update or remove their relationship first.`
+    );
+    return;
+  }
+
+  const label = `${target.FullName}${target.Nickname ? ` (${target.Nickname})` : ""}`;
+  const confirmed = confirm(
+    isSelfRemoval
+      ? `Remove your profile (${label}) from the family tree? This will delete your entry and cannot be undone.`
+      : `Remove ${label} from the family tree? This cannot be undone.`
+  );
+  if (!confirmed) return;
+
+  try {
+    const res = await fetch(CONFIG.APPS_SCRIPT_URL, {
+      method: "POST",
+      body: JSON.stringify({
+        action: "delete",
+        MemberID: memberId
+      })
+    });
+    const result = await res.json();
+
+    if (result.status === "success") {
+      if (viewerId === memberId) {
+        viewerId = "";
+        localStorage.removeItem("family_tree_me_id");
+      }
+      document.getElementById("profile-overlay").style.display = "none";
+      await fetchMembers();
+    } else {
+      alert("Error removing entry: " + (result.message || "Unknown error"));
+    }
+  } catch (err) {
+    console.error(err);
+    alert("Could not remove entry. Please try again.");
+  }
+}
+
+function removeMe() {
+  if (!viewerId) return;
+  deleteMember(viewerId, true);
 }
 
 function focusMember(memberId, shouldOpenProfile = true) {
@@ -627,7 +683,10 @@ function openProfile(memberId) {
       ${isMe ? `<button class="action-pill" onclick="openEditForm('${m.MemberID}')">✏️ Edit Profile</button>` : ''}
       ${
         isMe
-          ? `<button class="action-pill" style="background:var(--accent-bg); color:var(--ink);" onclick="logoutViewer()">🚪 Logout</button>`
+          ? `
+            <button class="action-pill" style="background:var(--accent-bg); color:var(--ink);" onclick="logoutViewer()">🚪 Logout</button>
+            <button class="action-pill" style="background:#fee2e2; color:#991b1b;" onclick="removeMe()">🗑️ Remove me</button>
+          `
           : `<button class="action-pill" style="background:var(--primary-light); color:var(--primary);" onclick="openLoginModal(allMembers.find(x => x.MemberID === '${m.MemberID}'))">👤 This is me</button>`
       }
     </div>
