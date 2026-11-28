@@ -2,8 +2,8 @@
 // 1. CONFIGURATION
 // ==========================================
 const CONFIG = {
-  APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbzkTpmUkMZtWVf-Ys90aW7eSICIeR4ajmUgXHo5p2Eqq2RCR-5RK8WvOfC2TFfBEkK1Yg/exec",
-  CLOUDINARY_CLOUD_NAME: "YOUR_CLOUDINARY_CLOUD_NAME",
+  APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbxRCEmy0RiSQSRa1vhqDkzokfxHGt7g-KenI4_qA1MUEIheR5QTSfZmSxZnhyC83j0hdA/exec",
+  CLOUDINARY_CLOUD_NAME: "di1fg6nu",
   CLOUDINARY_UPLOAD_PRESET: "family_tree_unsigned",
   FAMILY_NAME: "Bernaldez Family Tree"
 };
@@ -71,6 +71,11 @@ function formatBirthDate(dateStr) {
   return stripped || raw;
 }
 
+function hasValidName(member) {
+  if (!member) return false;
+  return Boolean(String(member.FullName || "").trim() || String(member.Nickname || "").trim());
+}
+
 window.addEventListener("DOMContentLoaded", async () => {
   applyTheme(getPreferredTheme());
   const titleEl = document.getElementById("header-title");
@@ -87,10 +92,22 @@ async function fetchMembers() {
   try {
     const res = await fetch(CONFIG.APPS_SCRIPT_URL);
     const data = await res.json();
-    allMembers = (data.members || []).map(m => ({
-      ...m,
-      BirthDate: formatBirthDate(m.BirthDate)
-    }));
+    allMembers = (data.members || [])
+      .filter(hasValidName)
+      .map(m => ({
+        ...m,
+        FullName: String(m.FullName || m.Nickname || "").trim(),
+        Nickname: String(m.Nickname || "").trim(),
+        BirthDate: formatBirthDate(m.BirthDate)
+      }));
+
+    if (viewerId && !allMembers.some(m => m.MemberID === viewerId)) {
+      viewerId = "";
+      viewerPin = "";
+      localStorage.removeItem("family_tree_me_id");
+      sessionStorage.removeItem("family_tree_me_pin");
+    }
+
     renderTree();
     renderViewerStatus();
     populateLineageOptions();
@@ -1020,6 +1037,13 @@ async function submitMember(e) {
   btn.textContent = isEdit ? "Updating..." : "Saving...";
 
   try {
+    const fullName = document.getElementById("FullName").value.trim();
+    const nickname = document.getElementById("Nickname").value.trim();
+    if (!fullName && !nickname) {
+      alert("Please enter a Full Name or Nickname before saving.");
+      return;
+    }
+
     const fileInput = document.getElementById("PhotoFile");
     const photoUrl = fileInput.files && fileInput.files[0] ? await uploadToCloudinary(fileInput.files[0]) : "";
     const existingMember = isEdit ? allMembers.find(x => x.MemberID === editId) : null;
@@ -1036,8 +1060,8 @@ async function submitMember(e) {
       RelatedToID: isEdit && existingMember && existingMember.Role === "Root" ? "" : document.getElementById("RelatedToID").value,
       LineageBranch: lineageInput ? lineageInput.value : "",
       FamilyPasscode: passkeyInput ? passkeyInput.value : "",
-      FullName: document.getElementById("FullName").value.trim(),
-      Nickname: document.getElementById("Nickname").value.trim(),
+      FullName: fullName || nickname,
+      Nickname: nickname,
       Gender: document.getElementById("Gender").value,
       BirthDate: formatBirthDate(document.getElementById("BirthDate").value),
       PhotoURL: photoUrl,
