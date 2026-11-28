@@ -269,7 +269,7 @@ button {
 .tree-viewport {
   width: 100%;
   overflow: auto;
-  padding: 28px 24px 96px;
+  padding: 32px 24px 96px;
 }
 
 .tree-canvas {
@@ -284,7 +284,7 @@ button {
   position: relative;
   display: inline-flex;
   justify-content: center;
-  padding-top: 28px;
+  padding-top: 38px;
   margin: 0;
 }
 
@@ -305,22 +305,22 @@ button {
 .tree-root ul ul::before {
   content: "";
   position: absolute;
-  top: 0;
+  top: -12px;
   left: 50%;
   width: 2.5px;
-  height: 28px;
+  height: 24px;
   background: var(--line);
   transform: translateX(-50%);
 }
 
-/* Connected sibling bar + vertical stem to each child */
+/* Horizontal bar elevated above cards + vertical stem to each child */
 .tree-root ul li::before,
 .tree-root ul li::after {
   content: "";
   position: absolute;
   top: 0;
   width: calc(50% + 18px);
-  height: 28px;
+  height: 26px;
   border-top: 2.5px solid var(--line);
 }
 
@@ -334,7 +334,7 @@ button {
 }
 
 .tree-root ul li:only-child {
-  padding-top: 28px;
+  padding-top: 38px;
 }
 
 .tree-root ul li:only-child::before {
@@ -343,8 +343,9 @@ button {
 
 .tree-root ul li:only-child::after {
   left: 50%;
+  top: -12px;
   width: 0;
-  height: 28px;
+  height: 38px;
   border-top: none;
   border-left: 2.5px solid var(--line);
   transform: translateX(-50%);
@@ -375,12 +376,15 @@ button {
 .couple-group {
   position: relative;
   display: inline-flex;
+  flex-direction: row;
   align-items: center;
+  justify-content: center;
   gap: 0;
-  margin-top: 4px;
+  margin: 8px auto 0;
 }
 
 .couple-link {
+  position: relative;
   width: 24px;
   min-width: 24px;
   height: 2.5px;
