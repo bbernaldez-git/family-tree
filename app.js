@@ -124,9 +124,7 @@ async function fetchMembers() {
     populateFormHelpers();
     generateDidYouKnow();
 
-    if (viewerId) {
-      requestAnimationFrame(() => centerOnPrimitivoAndMonica(false));
-    }
+    setTimeout(() => centerOnPrimitivoAndMonica(false, "auto"), 60);
   } catch (err) {
     console.error(err);
     alert("Could not load family tree. Check your Apps Script deployment.");
@@ -674,7 +672,7 @@ async function submitLogin(e) {
       }
       document.getElementById("profile-overlay").style.display = "none";
       await fetchMembers();
-      requestAnimationFrame(() => centerOnPrimitivoAndMonica(false));
+      setTimeout(() => centerOnPrimitivoAndMonica(false, "smooth"), 60);
     } else {
       errorEl.textContent = result.message || "Could not sign in.";
     }
@@ -771,14 +769,19 @@ function getPrimitivoMember() {
     allMembers.find(m => {
       const full = String(m.FullName || "").trim().toLowerCase();
       const nick = String(m.Nickname || "").trim().toLowerCase();
-      return full === "primitivo bernaldez" || full.startsWith("primitivo ") || nick === "lolo";
+      return (
+        full === "primitivo bernaldez" ||
+        full.startsWith("primitivo ") ||
+        nick === "lolo" ||
+        nick.startsWith("lolo ")
+      );
     }) ||
     allMembers.find(m => m.Role === "Root" || !m.RelatedToID) ||
     null
   );
 }
 
-function centerOnPrimitivoAndMonica(shouldOpenProfile = false) {
+function centerOnPrimitivoAndMonica(shouldOpenProfile = false, scrollBehavior = "smooth") {
   const primitivo = getPrimitivoMember();
   if (!primitivo) return;
 
@@ -794,17 +797,18 @@ function centerOnPrimitivoAndMonica(shouldOpenProfile = false) {
 
     if (viewport && viewport.scrollWidth > viewport.clientWidth) {
       const vpRect = viewport.getBoundingClientRect();
-      const targetCenterX = targetRect.left - vpRect.left + viewport.scrollLeft + targetRect.width / 2;
+      const targetCenterX =
+        targetRect.left - vpRect.left + viewport.scrollLeft + targetRect.width / 2;
       viewport.scrollTo({
         left: Math.max(0, targetCenterX - viewport.clientWidth / 2),
-        behavior: "smooth"
+        behavior: scrollBehavior
       });
     }
 
     const pageCenterY = targetRect.top + window.scrollY + targetRect.height / 2;
     window.scrollTo({
       top: Math.max(0, pageCenterY - window.innerHeight * 0.35),
-      behavior: "smooth"
+      behavior: scrollBehavior
     });
   }
 
