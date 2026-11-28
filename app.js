@@ -123,6 +123,10 @@ async function fetchMembers() {
     populateLineageOptions();
     populateFormHelpers();
     generateDidYouKnow();
+
+    if (viewerId) {
+      requestAnimationFrame(() => centerOnPrimitivoAndMonica(false));
+    }
   } catch (err) {
     console.error(err);
     alert("Could not load family tree. Check your Apps Script deployment.");
@@ -670,7 +674,7 @@ async function submitLogin(e) {
       }
       document.getElementById("profile-overlay").style.display = "none";
       await fetchMembers();
-      focusMember(viewerId, false);
+      requestAnimationFrame(() => centerOnPrimitivoAndMonica(false));
     } else {
       errorEl.textContent = result.message || "Could not sign in.";
     }
@@ -760,6 +764,53 @@ async function deleteMember(memberId, isSelfRemoval = false) {
 function removeMe() {
   if (!viewerId) return;
   deleteMember(viewerId, true);
+}
+
+function getPrimitivoMember() {
+  return (
+    allMembers.find(m => {
+      const full = String(m.FullName || "").trim().toLowerCase();
+      const nick = String(m.Nickname || "").trim().toLowerCase();
+      return full === "primitivo bernaldez" || full.startsWith("primitivo ") || nick === "lolo";
+    }) ||
+    allMembers.find(m => m.Role === "Root" || !m.RelatedToID) ||
+    null
+  );
+}
+
+function centerOnPrimitivoAndMonica(shouldOpenProfile = false) {
+  const primitivo = getPrimitivoMember();
+  if (!primitivo) return;
+
+  const node = document.getElementById(`node-${primitivo.MemberID}`);
+  const viewport = document.querySelector(".tree-viewport");
+
+  if (node) {
+    document.querySelectorAll(".member-card").forEach(c => c.classList.remove("highlighted"));
+    node.classList.add("highlighted");
+
+    const coupleGroup = node.closest(".couple-group") || node;
+    const targetRect = coupleGroup.getBoundingClientRect();
+
+    if (viewport && viewport.scrollWidth > viewport.clientWidth) {
+      const vpRect = viewport.getBoundingClientRect();
+      const targetCenterX = targetRect.left - vpRect.left + viewport.scrollLeft + targetRect.width / 2;
+      viewport.scrollTo({
+        left: Math.max(0, targetCenterX - viewport.clientWidth / 2),
+        behavior: "smooth"
+      });
+    }
+
+    const pageCenterY = targetRect.top + window.scrollY + targetRect.height / 2;
+    window.scrollTo({
+      top: Math.max(0, pageCenterY - window.innerHeight * 0.35),
+      behavior: "smooth"
+    });
+  }
+
+  if (shouldOpenProfile) {
+    openProfile(primitivo.MemberID);
+  }
 }
 
 function focusMember(memberId, shouldOpenProfile = true) {
