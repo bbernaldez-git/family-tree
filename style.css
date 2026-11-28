@@ -168,7 +168,7 @@ button {
 }
 
 /* ==========================================
-   4. "DID YOU KNOW?" BANNER & SEARCH
+   4. "DID YOU KNOW?" BANNER & FIXED SEARCH
    ========================================== */
 .dyk-banner {
   display: flex;
@@ -210,11 +210,13 @@ button {
 }
 
 .search-wrap {
-  position: relative;
+  position: sticky;
+  top: 58px;
   max-width: 440px;
-  margin: 14px auto 6px;
-  padding: 0 14px;
-  z-index: 15;
+  margin: 0 auto;
+  padding: 10px 14px 8px;
+  background: var(--bg);
+  z-index: 19;
 }
 
 #search-input {
@@ -230,7 +232,7 @@ button {
 
 .search-results {
   position: absolute;
-  top: calc(100% + 4px);
+  top: calc(100% - 2px);
   left: 14px;
   right: 14px;
   background: var(--surface);
@@ -239,6 +241,7 @@ button {
   box-shadow: var(--shadow-lg);
   max-height: 240px;
   overflow-y: auto;
+  z-index: 25;
 }
 
 .search-item {
@@ -269,7 +272,7 @@ button {
 .tree-viewport {
   width: 100%;
   overflow: auto;
-  padding: 32px 24px 96px;
+  padding: 28px 24px 96px;
 }
 
 .tree-canvas {
@@ -301,7 +304,6 @@ button {
   padding: 0 18px;
 }
 
-/* Continuous vertical drop from parent into child level */
 .tree-root ul ul::before {
   content: "";
   position: absolute;
@@ -313,7 +315,6 @@ button {
   transform: translateX(-50%);
 }
 
-/* Horizontal bar elevated above cards + vertical stem to each child */
 .tree-root ul li::before,
 .tree-root ul li::after {
   content: "";
@@ -758,6 +759,10 @@ button {
 }
 
 @media (max-width: 600px) {
+  .search-wrap {
+    top: 56px;
+  }
+
   .form-row {
     grid-template-columns: 1fr;
   }
