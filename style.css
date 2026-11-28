@@ -284,7 +284,7 @@ button {
   position: relative;
   display: inline-flex;
   justify-content: center;
-  padding-top: 34px;
+  padding-top: 28px;
   margin: 0;
 }
 
@@ -301,26 +301,26 @@ button {
   padding: 0 18px;
 }
 
-/* Downward stem from parent branch into child level */
+/* Continuous vertical drop from parent into child level */
 .tree-root ul ul::before {
   content: "";
   position: absolute;
   top: 0;
   left: 50%;
   width: 2.5px;
-  height: 17px;
+  height: 28px;
   background: var(--line);
   transform: translateX(-50%);
 }
 
-/* Horizontal bar + downward tip directly into each child node */
+/* Connected sibling bar + vertical stem to each child */
 .tree-root ul li::before,
 .tree-root ul li::after {
   content: "";
   position: absolute;
   top: 0;
-  width: 50%;
-  height: 34px;
+  width: calc(50% + 18px);
+  height: 28px;
   border-top: 2.5px solid var(--line);
 }
 
@@ -333,23 +333,18 @@ button {
   border-left: 2.5px solid var(--line);
 }
 
-/* Single child sits straight beneath the parent stem tip */
-.tree-root ul li:only-child::before,
-.tree-root ul li:only-child::after {
+.tree-root ul li:only-child {
+  padding-top: 28px;
+}
+
+.tree-root ul li:only-child::before {
   display: none;
 }
 
-.tree-root ul li:only-child {
-  padding-top: 34px;
-}
-
 .tree-root ul li:only-child::after {
-  content: "";
-  display: block;
-  top: 0;
   left: 50%;
   width: 0;
-  height: 34px;
+  height: 28px;
   border-top: none;
   border-left: 2.5px solid var(--line);
   transform: translateX(-50%);
@@ -382,7 +377,7 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 0;
-  margin-top: 2px;
+  margin-top: 4px;
 }
 
 .couple-link {
@@ -765,6 +760,11 @@ button {
 
   .tree-root li {
     padding: 0 10px;
+  }
+
+  .tree-root ul li::before,
+  .tree-root ul li::after {
+    width: calc(50% + 10px);
   }
 
   .couple-link {
