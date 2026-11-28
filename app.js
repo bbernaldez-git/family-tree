@@ -888,7 +888,6 @@ function openJoinForm() {
   document.getElementById("relation-group").style.display = "block";
   document.getElementById("RelatedToID").required = true;
 
-  // Passkey disabled while PIN protects profiles
   const passkeyGroup = document.getElementById("passkey-group");
   const passkeyInput = document.getElementById("FamilyPasscode");
   if (passkeyGroup) passkeyGroup.style.display = "none";
@@ -897,9 +896,10 @@ function openJoinForm() {
     passkeyInput.value = "";
   }
 
-  // Ask new joiners to create a 4-8 digit PIN
+  const pinGroup = document.getElementById("pin-group");
   const pinInput = document.getElementById("MemberPin");
   const pinLabel = document.querySelector("label[for='MemberPin']");
+  if (pinGroup) pinGroup.style.display = "flex";
   if (pinLabel) {
     pinLabel.textContent = "Create PIN (4–8 digits) *";
   }
@@ -963,8 +963,10 @@ function openEditForm(memberId) {
   document.getElementById("City").value = m.City || "";
   document.getElementById("Email").value = m.Email || "";
 
+  const pinGroup = document.getElementById("pin-group");
   const pinField = document.getElementById("MemberPin");
   const pinLabel = document.querySelector("label[for='MemberPin']");
+  if (pinGroup) pinGroup.style.display = "flex";
   if (pinLabel) {
     pinLabel.textContent = "PIN (4–8 digits)";
   }
@@ -1068,24 +1070,27 @@ async function submitMember(e) {
   const editId = document.getElementById("EditMemberID").value;
   const isEdit = Boolean(editId);
 
+  const fullName = document.getElementById("FullName").value.trim();
+  const nickname = document.getElementById("Nickname").value.trim();
+  if (!fullName && !nickname) {
+    alert("Please enter a Full Name or Nickname before saving.");
+    return;
+  }
+
+  const pinInput = document.getElementById("MemberPin");
+  const enteredPin = pinInput ? pinInput.value.trim() : "";
+  if (!isEdit && !/^[0-9]{4,8}$/.test(enteredPin)) {
+    alert("Please create a 4–8 digit PIN to protect your profile.");
+    return;
+  }
+
   btn.disabled = true;
   btn.textContent = isEdit ? "Updating..." : "Saving...";
 
+  // Yield one paint frame so button state renders immediately before network work
+  await new Promise(resolve => requestAnimationFrame(resolve));
+
   try {
-    const fullName = document.getElementById("FullName").value.trim();
-    const nickname = document.getElementById("Nickname").value.trim();
-    if (!fullName && !nickname) {
-      alert("Please enter a Full Name or Nickname before saving.");
-      return;
-    }
-
-    const pinInput = document.getElementById("MemberPin");
-    const enteredPin = pinInput ? pinInput.value.trim() : "";
-    if (!isEdit && !/^[0-9]{4,8}$/.test(enteredPin)) {
-      alert("Please create a 4–8 digit PIN to protect your profile.");
-      return;
-    }
-
     const fileInput = document.getElementById("PhotoFile");
     const photoUrl = fileInput.files && fileInput.files[0] ? await uploadToCloudinary(fileInput.files[0]) : "";
     const existingMember = isEdit ? allMembers.find(x => x.MemberID === editId) : null;
