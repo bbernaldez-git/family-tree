@@ -284,11 +284,15 @@ button {
   transition: transform 0.15s ease;
 }
 
+/* Vertical spacing:
+   - Horizontal sibling bar sits at top: 14px
+   - Vertical drop to each sibling ends at top: 40px (14px + 26px)
+   - Padding-top: 66px + .couple-group margin-top: 6px gives a clear gap above cards & top badges */
 .tree-root ul {
   position: relative;
   display: inline-flex;
   justify-content: center;
-  padding-top: 38px;
+  padding-top: 66px;
   margin: 0;
 }
 
@@ -305,24 +309,26 @@ button {
   padding: 0 18px;
 }
 
+/* Stem from parent couple down into the children's horizontal connector bar */
 .tree-root ul ul::before {
   content: "";
   position: absolute;
-  top: -14px;
+  top: -22px;
   left: 50%;
   width: 2.5px;
-  height: 28px;
+  height: 36px;
   background: var(--line);
   transform: translateX(-50%);
 }
 
+/* Horizontal bar + vertical drop to each sibling card/couple */
 .tree-root ul li::before,
 .tree-root ul li::after {
   content: "";
   position: absolute;
   top: 14px;
   width: calc(50% + 18px);
-  height: 24px;
+  height: 26px;
   border-top: 2.5px solid var(--line);
 }
 
@@ -335,8 +341,9 @@ button {
   border-left: 2.5px solid var(--line);
 }
 
+/* Single child (only-child) straight vertical connector with clean gap above card */
 .tree-root ul li:only-child {
-  padding-top: 38px;
+  padding-top: 66px;
 }
 
 .tree-root ul li:only-child::before {
@@ -345,9 +352,9 @@ button {
 
 .tree-root ul li:only-child::after {
   left: 50%;
-  top: -14px;
+  top: -22px;
   width: 0;
-  height: 52px;
+  height: 62px;
   border-top: none;
   border-left: 2.5px solid var(--line);
   transform: translateX(-50%);
@@ -382,16 +389,17 @@ button {
   align-items: center;
   justify-content: center;
   gap: 0;
-  margin: 8px auto 0;
+  margin: 6px auto 0;
 }
 
+/* Stem extending below a couple group when they have descendants */
 .couple-group:has(+ ul)::after {
   content: "";
   position: absolute;
-  bottom: -24px;
+  bottom: -44px;
   left: 50%;
   width: 2.5px;
-  height: 24px;
+  height: 44px;
   background: var(--line);
   transform: translateX(-50%);
 }
