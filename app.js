@@ -2,7 +2,7 @@
 // 1. CONFIGURATION
 // ==========================================
 const CONFIG = {
-  APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbxRCEmy0RiSQSRa1vhqDkzokfxHGt7g-KenI4_qA1MUEIheR5QTSfZmSxZnhyC83j0hdA/exec",
+  APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbx9VvrmpWbTeBUPWScgPiDspGcZw8S5uL_V34FY4LYiqVUckM9ANEpfFQCmLBNBPbgg/exec",
   CLOUDINARY_CLOUD_NAME: "di1fg6nu",
   CLOUDINARY_UPLOAD_PRESET: "family_tree_unsigned",
   FAMILY_NAME: "Bernaldez Family Tree"
@@ -881,18 +881,32 @@ function openJoinForm() {
   if (form) form.reset();
   document.getElementById("EditMemberID").value = "";
   document.getElementById("form-heading").textContent = "Join the Family Tree";
-  document.getElementById("form-sub").textContent = "Add yourself so relatives can connect with you.";
+  document.getElementById("form-sub").textContent = "Add yourself and create a PIN so you can manage your profile.";
   document.getElementById("photo-label").textContent = "Profile Photo";
   document.getElementById("submit-btn").textContent = "✓ Save to Family Tree";
   document.getElementById("role-toggle-wrap").style.display = "grid";
   document.getElementById("relation-group").style.display = "block";
   document.getElementById("RelatedToID").required = true;
 
+  // Passkey disabled while PIN protects profiles
   const passkeyGroup = document.getElementById("passkey-group");
   const passkeyInput = document.getElementById("FamilyPasscode");
-  if (passkeyGroup && passkeyInput) {
-    passkeyGroup.style.display = "flex";
-    passkeyInput.required = true;
+  if (passkeyGroup) passkeyGroup.style.display = "none";
+  if (passkeyInput) {
+    passkeyInput.required = false;
+    passkeyInput.value = "";
+  }
+
+  // Ask new joiners to create a 4-8 digit PIN
+  const pinInput = document.getElementById("MemberPin");
+  const pinLabel = document.querySelector("label[for='MemberPin']");
+  if (pinLabel) {
+    pinLabel.textContent = "Create PIN (4–8 digits) *";
+  }
+  if (pinInput) {
+    pinInput.required = true;
+    pinInput.pattern = "[0-9]{4,8}";
+    pinInput.placeholder = "Create a 4–8 digit PIN";
   }
 
   setRole("Descendant");
@@ -909,7 +923,7 @@ function openEditForm(memberId) {
 
   document.getElementById("EditMemberID").value = m.MemberID;
   document.getElementById("form-heading").textContent = `Edit Profile: ${m.FullName}`;
-  document.getElementById("form-sub").textContent = "Update your details, birthdate, or profile photo.";
+  document.getElementById("form-sub").textContent = "Update your details, birthdate, PIN, or profile photo.";
   document.getElementById("photo-label").textContent = "Change Photo (Optional)";
   document.getElementById("submit-btn").textContent = "✓ Save Changes";
 
@@ -922,10 +936,8 @@ function openEditForm(memberId) {
 
   const passkeyGroup = document.getElementById("passkey-group");
   const passkeyInput = document.getElementById("FamilyPasscode");
-  if (passkeyGroup && passkeyInput) {
-    passkeyGroup.style.display = "none";
-    passkeyInput.required = false;
-  }
+  if (passkeyGroup) passkeyGroup.style.display = "none";
+  if (passkeyInput) passkeyInput.required = false;
 
   if (m.Role === "Root") {
     document.getElementById("role-toggle-wrap").style.display = "none";
@@ -952,7 +964,14 @@ function openEditForm(memberId) {
   document.getElementById("Email").value = m.Email || "";
 
   const pinField = document.getElementById("MemberPin");
-  if (pinField) pinField.value = getMemberPin(m);
+  const pinLabel = document.querySelector("label[for='MemberPin']");
+  if (pinLabel) {
+    pinLabel.textContent = "PIN (4–8 digits)";
+  }
+  if (pinField) {
+    pinField.required = false;
+    pinField.value = getMemberPin(m);
+  }
 
   let socials = {};
   try { socials = JSON.parse(m.Socials || "{}"); } catch (e) {}
@@ -973,7 +992,6 @@ function setRole(role) {
   const lineageGroup = document.getElementById("lineage-group");
   const lineageSelect = document.getElementById("LineageBranch");
   if (lineageGroup && lineageSelect) {
-    // Only show "Whose descendant are you?" for Descendants; hide it for Spouses
     lineageGroup.style.display = !isEdit && !isSpouse ? "flex" : "none";
     lineageSelect.required = !isEdit && !isSpouse;
     if (isSpouse) {
@@ -1061,22 +1079,26 @@ async function submitMember(e) {
       return;
     }
 
+    const pinInput = document.getElementById("MemberPin");
+    const enteredPin = pinInput ? pinInput.value.trim() : "";
+    if (!isEdit && !/^[0-9]{4,8}$/.test(enteredPin)) {
+      alert("Please create a 4–8 digit PIN to protect your profile.");
+      return;
+    }
+
     const fileInput = document.getElementById("PhotoFile");
     const photoUrl = fileInput.files && fileInput.files[0] ? await uploadToCloudinary(fileInput.files[0]) : "";
     const existingMember = isEdit ? allMembers.find(x => x.MemberID === editId) : null;
-    const passkeyInput = document.getElementById("FamilyPasscode");
     const lineageInput = document.getElementById("LineageBranch");
-    const pinInput = document.getElementById("MemberPin");
 
     const payload = {
       action: isEdit ? "update" : "create",
       MemberID: editId,
       ActorMemberID: viewerId,
-      ProfilePIN: viewerPin,
+      ProfilePIN: isEdit ? viewerPin : enteredPin,
       Role: isEdit && existingMember && existingMember.Role === "Root" ? "Root" : selectedRole,
       RelatedToID: isEdit && existingMember && existingMember.Role === "Root" ? "" : document.getElementById("RelatedToID").value,
       LineageBranch: selectedRole === "Descendant" && lineageInput ? lineageInput.value : "",
-      FamilyPasscode: passkeyInput ? passkeyInput.value : "",
       FullName: fullName || nickname,
       Nickname: nickname,
       Gender: document.getElementById("Gender").value,
@@ -1088,7 +1110,7 @@ async function submitMember(e) {
       Phone: document.getElementById("Phone").value.trim(),
       Email: document.getElementById("Email").value.trim(),
       City: document.getElementById("City").value.trim(),
-      Pin: pinInput ? pinInput.value.trim() : getMemberPin(existingMember),
+      Pin: isEdit ? (enteredPin || getMemberPin(existingMember)) : enteredPin,
       Socials: {
         fb: document.getElementById("SocialFB").value.trim(),
         ig: document.getElementById("SocialIG").value.trim()
@@ -1105,6 +1127,13 @@ async function submitMember(e) {
       if (!isEdit) {
         viewerId = result.memberId;
         localStorage.setItem("family_tree_me_id", viewerId);
+        if (enteredPin) {
+          viewerPin = enteredPin;
+          sessionStorage.setItem("family_tree_me_pin", viewerPin);
+        }
+      } else if (enteredPin) {
+        viewerPin = enteredPin;
+        sessionStorage.setItem("family_tree_me_pin", viewerPin);
       }
       document.getElementById("join-form").reset();
       document.getElementById("form-overlay").style.display = "none";
