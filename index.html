@@ -74,9 +74,9 @@
           </select>
         </div>
 
-        <div class="form-group" id="passkey-group">
-          <label for="FamilyPasscode">Family Passkey (Members Only) *</label>
-          <input type="password" id="FamilyPasscode" placeholder="Enter family passkey" required />
+        <div class="form-group" id="passkey-group" style="display: none;">
+          <label for="FamilyPasscode">Family Passkey (Members Only)</label>
+          <input type="password" id="FamilyPasscode" placeholder="Enter family passkey" />
         </div>
 
         <div id="role-toggle-wrap" class="role-toggle">
@@ -166,6 +166,18 @@
             <label for="SocialIG">Instagram Handle</label>
             <input type="text" id="SocialIG" placeholder="@handle" />
           </div>
+        </div>
+
+        <div class="form-group" id="pin-group">
+          <label for="MemberPin">Create PIN (4–8 digits) *</label>
+          <input
+            type="password"
+            id="MemberPin"
+            inputmode="numeric"
+            pattern="[0-9]{4,8}"
+            placeholder="Create a 4–8 digit PIN"
+            autocomplete="new-password"
+          />
         </div>
 
         <button type="submit" id="submit-btn" class="btn-primary full-width">✓ Save to Family Tree</button>
