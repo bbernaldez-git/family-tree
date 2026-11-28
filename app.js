@@ -47,6 +47,36 @@ function toggleTheme() {
   applyTheme(next);
 }
 
+function syncMobileSearchActions() {
+  const isMobile = window.matchMedia("(max-width: 600px)").matches;
+  const searchWrap = document.querySelector(".search-wrap");
+  const headerActions = document.querySelector(".header-actions");
+  if (!searchWrap || !headerActions) return;
+
+  let mobileBar = document.getElementById("mobile-search-actions");
+  if (!mobileBar) {
+    mobileBar = document.createElement("div");
+    mobileBar.id = "mobile-search-actions";
+    mobileBar.className = "mobile-search-actions";
+    searchWrap.appendChild(mobileBar);
+  }
+
+  const qrBtn =
+    headerActions.querySelector('button[onclick*="openQrModal"]') ||
+    mobileBar.querySelector('button[onclick*="openQrModal"]');
+  const joinBtn =
+    headerActions.querySelector('button[onclick*="openJoinForm"]') ||
+    mobileBar.querySelector('button[onclick*="openJoinForm"]');
+
+  if (isMobile) {
+    if (qrBtn && qrBtn.parentElement !== mobileBar) mobileBar.appendChild(qrBtn);
+    if (joinBtn && joinBtn.parentElement !== mobileBar) mobileBar.appendChild(joinBtn);
+  } else {
+    if (qrBtn && qrBtn.parentElement !== headerActions) headerActions.appendChild(qrBtn);
+    if (joinBtn && joinBtn.parentElement !== headerActions) headerActions.appendChild(joinBtn);
+  }
+}
+
 function formatBirthDate(dateStr) {
   if (!dateStr) return "";
   const raw = String(dateStr).trim();
@@ -81,6 +111,9 @@ window.addEventListener("DOMContentLoaded", async () => {
   applyTheme(getPreferredTheme());
   const titleEl = document.getElementById("header-title");
   if (titleEl) titleEl.textContent = CONFIG.FAMILY_NAME;
+  syncMobileSearchActions();
+  window.addEventListener("resize", syncMobileSearchActions);
+
   await fetchMembers();
 
   const params = new URLSearchParams(window.location.search);
