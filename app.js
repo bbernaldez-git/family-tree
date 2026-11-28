@@ -9,6 +9,7 @@ const CONFIG = {
 };
 
 const THEME_STORAGE_KEY = "family_tree_theme";
+const BRANCH_TONE_COUNT = 6;
 
 let allMembers = [];
 let selectedRole = "Descendant";
@@ -132,7 +133,7 @@ async function fetchMembers() {
 }
 
 // ==========================================
-// 3. TREE RENDERING ENGINE (WITH BIRTH ORDER)
+// 3. TREE RENDERING ENGINE (WITH BIRTH ORDER & BRANCH COLORING)
 // ==========================================
 function parseBirthDateValue(dateStr) {
   const clean = formatBirthDate(dateStr);
@@ -148,6 +149,17 @@ function compareBirthDates(a, b) {
   return (formatBirthDate(a.BirthDate) || "9999").localeCompare(formatBirthDate(b.BirthDate) || "9999");
 }
 
+function getBranchToneIndex(branchKey, fallbackIndex = 0) {
+  const key = String(branchKey || "").trim();
+  if (!key) return (fallbackIndex % BRANCH_TONE_COUNT) + 1;
+
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) {
+    hash = (hash * 31 + key.charCodeAt(i)) % 100000;
+  }
+  return (hash % BRANCH_TONE_COUNT) + 1;
+}
+
 function renderTree() {
   const container = document.getElementById("tree-root");
   if (!container) return;
@@ -158,21 +170,26 @@ function renderTree() {
   }
 
   const roots = allMembers.filter(m => m.Role === "Root" || !m.RelatedToID);
-  const html = `<ul>${roots.map(root => buildBranchHTML(root, null)).join("")}</ul>`;
+  const html = `<ul>${roots.map((root, idx) => buildBranchHTML(root, null, null, idx)).join("")}</ul>`;
   container.innerHTML = html;
 }
 
-function buildBranchHTML(person, birthOrderInfo) {
+function buildBranchHTML(person, birthOrderInfo, activeTone = null, siblingIndex = 0) {
   const spouses = allMembers.filter(m => m.Role === "Spouse" && m.RelatedToID === person.MemberID);
   const parentIds = [person.MemberID, ...spouses.map(s => s.MemberID)];
   const children = allMembers
     .filter(m => m.Role === "Descendant" && parentIds.includes(m.RelatedToID))
     .sort(compareBirthDates);
 
+  const personTone =
+    person.Role === "Descendant"
+      ? (activeTone || getBranchToneIndex(person.MemberID, siblingIndex))
+      : activeTone;
+
   let nodeHTML = `<div class="couple-group">`;
-  nodeHTML += buildCardHTML(person, birthOrderInfo);
+  nodeHTML += buildCardHTML(person, birthOrderInfo, personTone);
   spouses.forEach(sp => {
-    nodeHTML += `<div class="couple-link"></div>` + buildCardHTML(sp, null);
+    nodeHTML += `<div class="couple-link"></div>` + buildCardHTML(sp, null, personTone);
   });
   nodeHTML += `</div>`;
 
@@ -180,7 +197,8 @@ function buildBranchHTML(person, birthOrderInfo) {
   if (children.length > 0) {
     childrenHTML = `<ul>${children.map((child, idx) => {
       const orderMeta = children.length > 1 ? { index: idx, total: children.length } : null;
-      return buildBranchHTML(child, orderMeta);
+      const childTone = activeTone || getBranchToneIndex(child.MemberID, idx);
+      return buildBranchHTML(child, orderMeta, childTone, idx);
     }).join("")}</ul>`;
   }
 
@@ -208,7 +226,7 @@ function getBirthOrderBadge(orderInfo) {
   return `<span class="order-badge">#${orderInfo.index + 1}</span>`;
 }
 
-function buildCardHTML(m, birthOrderInfo) {
+function buildCardHTML(m, birthOrderInfo, branchTone = null) {
   const initials = getInitials(m.FullName);
   const avatar = m.PhotoURL
     ? `<img src="${m.PhotoURL}" class="avatar" alt="${m.FullName}" />`
@@ -216,9 +234,10 @@ function buildCardHTML(m, birthOrderInfo) {
   const isMe = m.MemberID === viewerId;
   const orderBadge = getBirthOrderBadge(birthOrderInfo);
   const safeId = String(m.MemberID).replace(/'/g, "\\'");
+  const toneAttr = branchTone ? `data-branch-tone="${branchTone}"` : "";
 
   return `
-    <div class="member-card ${isMe ? 'is-me' : ''}" id="node-${m.MemberID}" data-member-id="${m.MemberID}" onclick="event.stopPropagation(); openProfile('${safeId}')">
+    <div class="member-card ${isMe ? 'is-me' : ''}" id="node-${m.MemberID}" data-member-id="${m.MemberID}" ${toneAttr} onclick="event.stopPropagation(); openProfile('${safeId}')">
       ${orderBadge}
       ${isMe ? '<span class="me-badge">You</span>' : ''}
       ${avatar}
@@ -1087,7 +1106,6 @@ async function submitMember(e) {
   btn.disabled = true;
   btn.textContent = isEdit ? "Updating..." : "Saving...";
 
-  // Yield one paint frame so button state renders immediately before network work
   await new Promise(resolve => requestAnimationFrame(resolve));
 
   try {
