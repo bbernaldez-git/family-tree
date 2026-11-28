@@ -2,8 +2,8 @@
 // 1. CONFIGURATION
 // ==========================================
 const CONFIG = {
-  APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbzXd6F35DRwgxQ3T1-M82TeKPuVy4Ea_mp2n0NW2DT70ONOTn_0_NDK8nulOmPwhA0hKA/exec",
-  CLOUDINARY_CLOUD_NAME: "di1fg6nu",
+  APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbzkTpmUkMZtWVf-Ys90aW7eSICIeR4ajmUgXHo5p2Eqq2RCR-5RK8WvOfC2TFfBEkK1Yg/exec",
+  CLOUDINARY_CLOUD_NAME: "YOUR_CLOUDINARY_CLOUD_NAME",
   CLOUDINARY_UPLOAD_PRESET: "family_tree_unsigned",
   FAMILY_NAME: "Bernaldez Family Tree"
 };
@@ -14,6 +14,7 @@ let allMembers = [];
 let selectedRole = "Descendant";
 let currentZoom = 1;
 let viewerId = localStorage.getItem("family_tree_me_id") || "";
+let viewerPin = sessionStorage.getItem("family_tree_me_pin") || "";
 let selectedLoginMemberId = "";
 
 // ==========================================
@@ -614,6 +615,13 @@ async function submitLogin(e) {
     if (result.status === "success") {
       viewerId = result.memberId || candidate.MemberID;
       localStorage.setItem("family_tree_me_id", viewerId);
+      if (enteredPin) {
+        viewerPin = enteredPin;
+        sessionStorage.setItem("family_tree_me_pin", viewerPin);
+      } else {
+        viewerPin = "";
+        sessionStorage.removeItem("family_tree_me_pin");
+      }
       document.getElementById("profile-overlay").style.display = "none";
       await fetchMembers();
       focusMember(viewerId, false);
@@ -631,7 +639,9 @@ async function submitLogin(e) {
 
 function logoutViewer() {
   viewerId = "";
+  viewerPin = "";
   localStorage.removeItem("family_tree_me_id");
+  sessionStorage.removeItem("family_tree_me_pin");
   const overlay = document.getElementById("profile-overlay");
   if (overlay) overlay.style.display = "none";
   renderViewerStatus();
@@ -665,13 +675,20 @@ async function deleteMember(memberId, isSelfRemoval = false) {
   );
   if (!confirmed) return;
 
+  let pinToSend = viewerPin;
+  if (!pinToSend && (target.HasPIN || getMemberPin(target))) {
+    pinToSend = (prompt(`Enter PIN for ${label} to confirm removal:`) || "").trim();
+    if (!pinToSend) return;
+  }
+
   try {
     const res = await fetch(CONFIG.APPS_SCRIPT_URL, {
       method: "POST",
       body: JSON.stringify({
         action: "delete",
         MemberID: memberId,
-        ActorMemberID: viewerId
+        ActorMemberID: viewerId,
+        ProfilePIN: pinToSend
       })
     });
     const result = await res.json();
@@ -679,7 +696,9 @@ async function deleteMember(memberId, isSelfRemoval = false) {
     if (result.status === "success") {
       if (viewerId === memberId) {
         viewerId = "";
+        viewerPin = "";
         localStorage.removeItem("family_tree_me_id");
+        sessionStorage.removeItem("family_tree_me_pin");
       }
       document.getElementById("profile-overlay").style.display = "none";
       await fetchMembers();
@@ -1012,6 +1031,7 @@ async function submitMember(e) {
       action: isEdit ? "update" : "create",
       MemberID: editId,
       ActorMemberID: viewerId,
+      ProfilePIN: viewerPin,
       Role: isEdit && existingMember && existingMember.Role === "Root" ? "Root" : selectedRole,
       RelatedToID: isEdit && existingMember && existingMember.Role === "Root" ? "" : document.getElementById("RelatedToID").value,
       LineageBranch: lineageInput ? lineageInput.value : "",
