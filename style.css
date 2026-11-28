@@ -107,12 +107,12 @@ button {
 .topbar {
   position: sticky;
   top: 0;
-  z-index: 20;
+  z-index: 30;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 12px 18px;
+  gap: 10px;
+  padding: 10px 16px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   box-shadow: var(--shadow);
@@ -123,22 +123,23 @@ button {
   align-items: center;
   gap: 8px;
   font-weight: 700;
-  font-size: 1.05rem;
+  font-size: 1.02rem;
+  line-height: 1.15;
   color: var(--ink);
 }
 
 .header-actions {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
 }
 
 .btn-primary,
 .btn-secondary {
-  border-radius: 10px;
-  padding: 8px 13px;
-  font-size: 0.86rem;
+  border-radius: 9px;
+  padding: 7px 11px;
+  font-size: 0.82rem;
   font-weight: 600;
   border: 1px solid transparent;
   transition: background-color 0.15s ease, transform 0.1s ease;
@@ -211,17 +212,17 @@ button {
 
 .search-wrap {
   position: sticky;
-  top: 58px;
+  top: 52px;
   max-width: 440px;
   margin: 0 auto;
-  padding: 10px 14px 8px;
+  padding: 8px 14px;
   background: var(--bg);
-  z-index: 19;
+  z-index: 25;
 }
 
 #search-input {
   width: 100%;
-  padding: 10px 14px;
+  padding: 9px 14px;
   border-radius: 12px;
   border: 1px solid var(--border);
   background: var(--surface);
@@ -241,7 +242,7 @@ button {
   box-shadow: var(--shadow-lg);
   max-height: 240px;
   overflow-y: auto;
-  z-index: 25;
+  z-index: 28;
 }
 
 .search-item {
@@ -271,7 +272,8 @@ button {
    ========================================== */
 .tree-viewport {
   width: 100%;
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: visible;
   padding: 28px 24px 96px;
 }
 
@@ -287,7 +289,7 @@ button {
   position: relative;
   display: inline-flex;
   justify-content: center;
-  padding-top: 38px;
+  padding-top: 34px;
   margin: 0;
 }
 
@@ -301,27 +303,29 @@ button {
   flex-direction: column;
   align-items: center;
   list-style: none;
-  padding: 0 18px;
+  padding: 0 16px;
 }
 
+/* Continuous vertical drop from parent into child tier */
 .tree-root ul ul::before {
   content: "";
   position: absolute;
-  top: -12px;
+  top: 0;
   left: 50%;
   width: 2.5px;
-  height: 24px;
+  height: 34px;
   background: var(--line);
   transform: translateX(-50%);
 }
 
+/* Continuous sibling bar + vertical stem into each child */
 .tree-root ul li::before,
 .tree-root ul li::after {
   content: "";
   position: absolute;
-  top: 0;
-  width: calc(50% + 18px);
-  height: 26px;
+  top: 17px;
+  width: calc(50% + 16px);
+  height: 17px;
   border-top: 2.5px solid var(--line);
 }
 
@@ -335,7 +339,7 @@ button {
 }
 
 .tree-root ul li:only-child {
-  padding-top: 38px;
+  padding-top: 34px;
 }
 
 .tree-root ul li:only-child::before {
@@ -344,9 +348,9 @@ button {
 
 .tree-root ul li:only-child::after {
   left: 50%;
-  top: -12px;
+  top: 0;
   width: 0;
-  height: 38px;
+  height: 34px;
   border-top: none;
   border-left: 2.5px solid var(--line);
   transform: translateX(-50%);
@@ -381,7 +385,7 @@ button {
   align-items: center;
   justify-content: center;
   gap: 0;
-  margin: 8px auto 0;
+  margin: 6px auto 0;
 }
 
 .couple-link {
@@ -759,8 +763,44 @@ button {
 }
 
 @media (max-width: 600px) {
+  .topbar {
+    padding: 8px 10px;
+    gap: 6px;
+  }
+
+  .brand {
+    font-size: 0.86rem;
+    gap: 4px;
+    white-space: nowrap;
+  }
+
+  .header-actions {
+    gap: 4px;
+    flex-wrap: nowrap;
+  }
+
+  .header-actions .btn-primary,
+  .header-actions .btn-secondary {
+    padding: 5px 7px;
+    font-size: 0.7rem;
+    border-radius: 7px;
+    white-space: nowrap;
+  }
+
+  #viewer-session-bar {
+    padding: 2px 6px !important;
+    font-size: 0.7rem !important;
+    gap: 4px !important;
+  }
+
+  #viewer-session-bar button {
+    padding: 2px 5px !important;
+    font-size: 0.68rem !important;
+  }
+
   .search-wrap {
-    top: 56px;
+    top: 44px;
+    padding: 6px 12px;
   }
 
   .form-row {
@@ -768,12 +808,12 @@ button {
   }
 
   .tree-root li {
-    padding: 0 10px;
+    padding: 0 12px;
   }
 
   .tree-root ul li::before,
   .tree-root ul li::after {
-    width: calc(50% + 10px);
+    width: calc(50% + 12px);
   }
 
   .couple-link {
