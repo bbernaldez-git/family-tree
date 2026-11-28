@@ -2,8 +2,8 @@
 // 1. CONFIGURATION
 // ==========================================
 const CONFIG = {
-  APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbxRCEmy0RiSQSRa1vhqDkzokfxHGt7g-KenI4_qA1MUEIheR5QTSfZmSxZnhyC83j0hdA/exec",
-  CLOUDINARY_CLOUD_NAME: "di1fg6nu",
+  APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbzkTpmUkMZtWVf-Ys90aW7eSICIeR4ajmUgXHo5p2Eqq2RCR-5RK8WvOfC2TFfBEkK1Yg/exec",
+  CLOUDINARY_CLOUD_NAME: "YOUR_CLOUDINARY_CLOUD_NAME",
   CLOUDINARY_UPLOAD_PRESET: "family_tree_unsigned",
   FAMILY_NAME: "Bernaldez Family Tree"
 };
@@ -92,10 +92,19 @@ async function fetchMembers() {
   try {
     const res = await fetch(CONFIG.APPS_SCRIPT_URL);
     const data = await res.json();
+    const seenIds = new Set();
+
     allMembers = (data.members || [])
       .filter(hasValidName)
+      .filter(m => {
+        const id = String(m.MemberID || "").trim();
+        if (!id || seenIds.has(id)) return false;
+        seenIds.add(id);
+        return true;
+      })
       .map(m => ({
         ...m,
+        MemberID: String(m.MemberID).trim(),
         FullName: String(m.FullName || m.Nickname || "").trim(),
         Nickname: String(m.Nickname || "").trim(),
         BirthDate: formatBirthDate(m.BirthDate)
@@ -206,9 +215,10 @@ function buildCardHTML(m, birthOrderInfo) {
     : `<div class="avatar">${initials}</div>`;
   const isMe = m.MemberID === viewerId;
   const orderBadge = getBirthOrderBadge(birthOrderInfo);
+  const safeId = String(m.MemberID).replace(/'/g, "\\'");
 
   return `
-    <div class="member-card ${isMe ? 'is-me' : ''}" id="node-${m.MemberID}" onclick="openProfile('${m.MemberID}')">
+    <div class="member-card ${isMe ? 'is-me' : ''}" id="node-${m.MemberID}" data-member-id="${m.MemberID}" onclick="event.stopPropagation(); openProfile('${safeId}')">
       ${orderBadge}
       ${isMe ? '<span class="me-badge">You</span>' : ''}
       ${avatar}
@@ -878,13 +888,6 @@ function openJoinForm() {
   document.getElementById("relation-group").style.display = "block";
   document.getElementById("RelatedToID").required = true;
 
-  const lineageGroup = document.getElementById("lineage-group");
-  const lineageSelect = document.getElementById("LineageBranch");
-  if (lineageGroup && lineageSelect) {
-    lineageGroup.style.display = "flex";
-    lineageSelect.required = true;
-  }
-
   const passkeyGroup = document.getElementById("passkey-group");
   const passkeyInput = document.getElementById("FamilyPasscode");
   if (passkeyGroup && passkeyInput) {
@@ -961,12 +964,26 @@ function openEditForm(memberId) {
 
 function setRole(role) {
   selectedRole = role;
-  document.getElementById("btn-role-child").classList.toggle("active", role === "Descendant");
-  document.getElementById("btn-role-spouse").classList.toggle("active", role === "Spouse");
-  document.getElementById("relation-label").textContent =
-    role === "Descendant"
-      ? "Who is your Parent in this family? *"
-      : "Who is your Spouse / Partner in this family? *";
+  const isSpouse = role === "Spouse";
+  const isEdit = Boolean(document.getElementById("EditMemberID")?.value);
+
+  document.getElementById("btn-role-child").classList.toggle("active", !isSpouse);
+  document.getElementById("btn-role-spouse").classList.toggle("active", isSpouse);
+
+  const lineageGroup = document.getElementById("lineage-group");
+  const lineageSelect = document.getElementById("LineageBranch");
+  if (lineageGroup && lineageSelect) {
+    // Only show "Whose descendant are you?" for Descendants; hide it for Spouses
+    lineageGroup.style.display = !isEdit && !isSpouse ? "flex" : "none";
+    lineageSelect.required = !isEdit && !isSpouse;
+    if (isSpouse) {
+      lineageSelect.value = "";
+    }
+  }
+
+  document.getElementById("relation-label").textContent = isSpouse
+    ? "Who is your Spouse / Partner in this family? *"
+    : "Who is your Parent in this family? *";
 }
 
 function filterRelativeDropdown(query, excludeId = "") {
@@ -1058,7 +1075,7 @@ async function submitMember(e) {
       ProfilePIN: viewerPin,
       Role: isEdit && existingMember && existingMember.Role === "Root" ? "Root" : selectedRole,
       RelatedToID: isEdit && existingMember && existingMember.Role === "Root" ? "" : document.getElementById("RelatedToID").value,
-      LineageBranch: lineageInput ? lineageInput.value : "",
+      LineageBranch: selectedRole === "Descendant" && lineageInput ? lineageInput.value : "",
       FamilyPasscode: passkeyInput ? passkeyInput.value : "",
       FullName: fullName || nickname,
       Nickname: nickname,
